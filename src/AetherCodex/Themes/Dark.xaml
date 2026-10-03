@@ -1,0 +1,84 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ÆtherNight twilight palette -->
+    <SolidColorBrush x:Key="WindowBackground" Color="#06070D"/>
+    <SolidColorBrush x:Key="PanelBackground" Color="#0D0C16"/>
+    <SolidColorBrush x:Key="SidebarBackground" Color="#0D0C16"/>
+    <SolidColorBrush x:Key="EditorBackground" Color="#06070D"/>
+    <SolidColorBrush x:Key="ChromeBackground" Color="#0C0E15"/>
+    <SolidColorBrush x:Key="Foreground" Color="#8E94A0"/>
+    <SolidColorBrush x:Key="MutedForeground" Color="#5A6068"/>
+    <SolidColorBrush x:Key="Accent" Color="#8C7AB8"/>
+    <SolidColorBrush x:Key="AccentBright" Color="#C0A8E8"/>
+    <SolidColorBrush x:Key="Complementary" Color="#B0A06E"/>
+    <SolidColorBrush x:Key="Border" Color="#1E1E2E"/>
+    <SolidColorBrush x:Key="Selection" Color="#1B2433"/>
+    <SolidColorBrush x:Key="LineHighlight" Color="#0C0E15"/>
+    <SolidColorBrush x:Key="CodeBackground" Color="#080A10"/>
+    <SolidColorBrush x:Key="UserBubble" Color="#1B2433"/>
+    <SolidColorBrush x:Key="PythiaBubble" Color="#0D0C16"/>
+    <SolidColorBrush x:Key="Danger" Color="#B0485E"/>
+
+    <SolidColorBrush x:Key="MenuBackground" Color="#0C0E15"/>
+    <SolidColorBrush x:Key="MenuForeground" Color="#8E94A0"/>
+    <SolidColorBrush x:Key="MenuHighlight" Color="#1B2433"/>
+
+    <!-- Base control styles -->
+    <Style TargetType="Window">
+        <Setter Property="Background" Value="{StaticResource WindowBackground}"/>
+        <Setter Property="Foreground" Value="{StaticResource Foreground}"/>
+    </Style>
+
+    <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource CodeBackground}"/>
+        <Setter Property="Foreground" Value="{StaticResource Foreground}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        <Setter Property="CaretBrush" Value="{StaticResource AccentBright}"/>
+    </Style>
+
+    <Style TargetType="TreeView">
+        <Setter Property="Background" Value="{StaticResource SidebarBackground}"/>
+        <Setter Property="Foreground" Value="{StaticResource Foreground}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
+    <Style TargetType="TreeViewItem">
+        <Setter Property="Foreground" Value="{StaticResource Foreground}"/>
+        <Setter Property="IsExpanded" Value="False"/>
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource Selection}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource ChromeBackground}"/>
+        <Setter Property="Foreground" Value="{StaticResource Foreground}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        <Setter Property="Padding" Value="10,5"/>
+    </Style>
+
+    <Style x:Key="IconButton" TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource MutedForeground}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource AccentBright}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="{StaticResource WindowBackground}"/>
+    </Style>
+
+    <Style TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource Foreground}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+</ResourceDictionary>

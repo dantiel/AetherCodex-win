@@ -1,0 +1,16 @@
+bin/
+obj/
+.vs/
+*.user
+.aethercodex
+.mnemosyne.db
+mnemosyne.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Vendored Ruby gems — regenerate with `bundle install` (see Ruby/Gemfile).
+Ruby/.vendor_bundle/
+Ruby/.bundle/
+Ruby/vendored/
