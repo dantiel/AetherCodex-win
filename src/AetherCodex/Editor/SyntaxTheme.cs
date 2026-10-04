@@ -23,6 +23,16 @@ public sealed class SyntaxTheme
     public Color PythiaCodeBackground { get; init; } = Color.FromRgb(0x08, 0x0A, 0x10);
     public Color PythiaCodeForeground { get; init; } = Color.FromRgb(0x8E, 0x94, 0xA0);
 
+    // Optional top-level chrome hints present in the richer themes (sidebar/ruler
+    // surfaces + pythia "shine"). Null means "derive from the core colours".
+    public Color? SidebarBackground { get; init; }
+    public Color? SidebarAccent { get; init; }
+    public Color? SidebarForeground { get; init; }
+    public Color? RulerBackground { get; init; }
+    public Color? RulerForeground { get; init; }
+    public Color? RulerSeparator { get; init; }
+    public Color? Shine { get; init; }
+
     /// <summary>TextMate scope name → color (and optional style).</summary>
     public IReadOnlyDictionary<string, ScopeStyle> Scopes { get; init; }
         = new Dictionary<string, ScopeStyle>();

@@ -67,12 +67,15 @@ public partial class MainWindow : Window
     private void ApplyTheme(SyntaxTheme theme)
     {
         _theme = theme;
+        ThemePalette.Apply(theme);
+
         var bg = new SolidColorBrush(theme.Background);
         var fg = new SolidColorBrush(theme.Foreground);
+        var ui = ThemePalette.Build(theme);
 
         Editor.Background = bg;
         Editor.Foreground = fg;
-        Editor.LineNumbersForeground = new SolidColorBrush(Color.FromRgb(0x5A, 0x60, 0x68));
+        Editor.LineNumbersForeground = new SolidColorBrush(ui.MutedForeground);
         Editor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(theme.PythiaAccent);
 
         Pythia.ApplyTheme(theme);
@@ -111,8 +114,9 @@ public partial class MainWindow : Window
             if (!isMarkdown) SetPreviewOpen(false);
             if (isMarkdown && Preview.Visibility == Visibility.Visible) RenderPreview();
 
-            // Open the file's project context in the daemon (polymorphic window).
-            _ = Task.Run(async () => { try { await _bridge.ActivateContextAsync(path); } catch { } });
+            // Open the file's project context in the daemon (polymorphic window) and
+            // sync Pythia to that project's Mnemosyne history when the scope changed.
+            _ = ActivateContextAndSyncAsync(path);
         }
         catch (Exception ex)
         {
@@ -180,15 +184,27 @@ public partial class MainWindow : Window
         _settings.LastDirectory = directory;
         Browser.SetRoot(directory);
         Title = $"ÆtherCodex — {directory}";
-        _ = Task.Run(async () =>
+        _ = ActivateContextAndSyncAsync(directory);
+    }
+
+    /// <summary>
+    /// Re-point the daemon at the nearest project root for <paramref name="path"/>
+    /// (file or directory), then ask Pythia to reconcile its conversation with that
+    /// project's Mnemosyne history. The rebuild itself is gated inside
+    /// <see cref="PythiaPanel.RestoreHistoryAsync"/> — only "no history yet" or
+    /// "Mnemosyne newer than Pythia's log" triggers an actual re-render.
+    /// </summary>
+    private async Task ActivateContextAndSyncAsync(string path)
+    {
+        try
         {
-            try
-            {
-                Environment.SetEnvironmentVariable("AETHER_PROJECT_ROOT", directory);
-                await _bridge.ActivateContextAsync(directory);
-            }
-            catch { /* daemon not started yet — will inherit root on start */ }
-        });
+            Environment.SetEnvironmentVariable("AETHER_PROJECT_ROOT", path);
+            var ctx = await _bridge.ActivateContextAsync(path);
+            var root = ctx?["project_root"]?.GetValue<string>();
+            if (root is not null)
+                await Pythia.RestoreHistoryAsync(root);
+        }
+        catch { /* daemon not started yet — will inherit root on start */ }
     }
 
     private void OnOpenFile(object sender, RoutedEventArgs e)

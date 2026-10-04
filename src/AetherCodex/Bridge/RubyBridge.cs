@@ -111,8 +111,13 @@ public sealed class RubyBridge : IDisposable
             StandardInputEncoding = new UTF8Encoding(false),
         };
         psi.Environment["AETHER_PROJECT_ROOT"] = ProjectRoot;
-        psi.Environment["LANG"] ??= "en_US.UTF-8";
-        psi.Environment["LC_ALL"] ??= "en_US.UTF-8";
+        // Windows does not set LANG/LC_ALL — the indexer throws KeyNotFoundException
+        // ("The given key 'LANG' was not present in the dictionary.") on a missing
+        // key, so guard with ContainsKey instead of relying on ??=.
+        if (!psi.Environment.ContainsKey("LANG"))
+            psi.Environment["LANG"] = "en_US.UTF-8";
+        if (!psi.Environment.ContainsKey("LC_ALL"))
+            psi.Environment["LC_ALL"] = "en_US.UTF-8";
 
         var process = new Process { StartInfo = psi };
         if (!process.Start())

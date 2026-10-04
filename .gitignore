@@ -2,7 +2,9 @@ bin/
 obj/
 .vs/
 *.user
+*.log
 .aethercodex
+.aether/
 .mnemosyne.db
 mnemosyne.db
 *.db

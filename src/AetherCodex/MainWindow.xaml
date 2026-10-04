@@ -8,7 +8,7 @@
 
     <DockPanel>
         <!-- Menu -->
-        <Menu DockPanel.Dock="Top" Background="{StaticResource MenuBackground}" Foreground="{StaticResource MenuForeground}">
+        <Menu DockPanel.Dock="Top" Background="{DynamicResource MenuBackground}" Foreground="{DynamicResource MenuForeground}">
             <MenuItem Header="_File">
                 <MenuItem Header="_Open Folder…" Click="OnOpenFolder"/>
                 <MenuItem Header="Open _File…" Click="OnOpenFile"/>
@@ -42,18 +42,18 @@
             <panels:FileBrowser x:Name="Browser" Grid.Column="0"/>
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
-                          Background="{StaticResource Border}"/>
+                          Background="{DynamicResource Border}"/>
 
             <!-- Editor pane -->
             <DockPanel Grid.Column="2">
-                <Border DockPanel.Dock="Top" Padding="10,6" Background="{StaticResource ChromeBackground}">
+                <Border DockPanel.Dock="Top" Padding="10,6" Background="{DynamicResource ChromeBackground}">
                     <DockPanel>
-                        <TextBlock x:Name="FilePathText" DockPanel.Dock="Left" Foreground="{StaticResource MutedForeground}"
+                        <TextBlock x:Name="FilePathText" DockPanel.Dock="Left" Foreground="{DynamicResource MutedForeground}"
                                    FontFamily="Cascadia Mono, Consolas" FontSize="11" Text="no file open"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         <Button x:Name="PreviewButton" DockPanel.Dock="Right" Content="◉ Preview" Style="{StaticResource IconButton}"
                                 ToolTip="Toggle markdown preview" Click="OnTogglePreview" Margin="8,0,0,0" Visibility="Collapsed"/>
-                        <TextBlock x:Name="LanguageText" DockPanel.Dock="Right" Foreground="{StaticResource Accent}"
+                        <TextBlock x:Name="LanguageText" DockPanel.Dock="Right" Foreground="{DynamicResource Accent}"
                                    FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </DockPanel>
                 </Border>
@@ -67,15 +67,15 @@
                                            FontFamily="Cascadia Mono, Consolas"
                                            FontSize="14"
                                            ShowLineNumbers="True"
-                                           Background="{StaticResource EditorBackground}"
-                                           Foreground="{StaticResource Foreground}"
-                                           LineNumbersForeground="{StaticResource MutedForeground}"
+                                           Background="{DynamicResource EditorBackground}"
+                                           Foreground="{DynamicResource Foreground}"
+                                           LineNumbersForeground="{DynamicResource MutedForeground}"
                                            HorizontalScrollBarVisibility="Auto"
                                            VerticalScrollBarVisibility="Auto"/>
                     <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
-                                  Background="{StaticResource Border}" Visibility="Collapsed"/>
+                                  Background="{DynamicResource Border}" Visibility="Collapsed"/>
                     <FlowDocumentScrollViewer x:Name="Preview" Grid.Column="2" Visibility="Collapsed"
-                                              Background="{StaticResource WindowBackground}"
+                                              Background="{DynamicResource WindowBackground}"
                                               Padding="12"
                                               VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled"/>
@@ -83,7 +83,7 @@
             </DockPanel>
 
             <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
-                          Background="{StaticResource Border}"/>
+                          Background="{DynamicResource Border}"/>
 
             <panels:PythiaPanel x:Name="Pythia" Grid.Column="4"/>
         </Grid>

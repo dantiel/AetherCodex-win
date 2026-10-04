@@ -17,7 +17,13 @@ public partial class PythiaPanel : UserControl
     private SyntaxTheme _theme;
     private string _activeCompanion = "pythia";
 
+    // Scope + newest-Mnemosyne marker of what Pythia has already rendered. Used to
+    // decide whether a rebuild is warranted (see RestoreHistoryAsync).
+    private string? _lastSyncedRoot;
+    private string? _lastSyncedTimestamp;
+
     private Border? _currentStatusCard;
+    private UiColors _ui = ThemePalette.Build(new SyntaxTheme());
 
     public PythiaPanel()
     {
@@ -32,11 +38,82 @@ public partial class PythiaPanel : UserControl
     public void ApplyTheme(SyntaxTheme theme)
     {
         _theme = theme;
+        _ui = ThemePalette.Build(theme);
         Background = new SolidColorBrush(theme.PythiaBackground);
         Foreground = new SolidColorBrush(theme.PythiaForeground);
         StatusDot.Fill = _bridge.IsRunning
             ? new SolidColorBrush(theme.PythiaAccent)
-            : new SolidColorBrush(Color.FromRgb(0x5A, 0x60, 0x68));
+            : new SolidColorBrush(_ui.MutedForeground);
+    }
+
+    /// <summary>
+    /// Restore the conversation from Mnemosyne's latest recorded exchanges so the
+    /// Pythia panel stays in sync with the CLI for the *currently active* project.
+    /// Called after the daemon re-points its scope (activate_context) — the memory
+    /// db has already been switched, so <c>history</c> returns this project's data.
+    /// <para>
+    /// The rebuild is gated: it only re-renders when there is nothing to show yet
+    /// (a fresh/empty project) or when Mnemosyne has advanced past what Pythia
+    /// already rendered for this same root. Otherwise the panel is left untouched,
+    /// avoiding a needless wipe on every file-open in the same project.
+    /// </para>
+    /// </summary>
+    public async Task RestoreHistoryAsync(string? contextRoot, int limit = 20)
+    {
+        JsonArray? entries;
+        try { entries = await _bridge.FetchHistoryAsync(limit); }
+        catch { return; }
+        if (entries is null) return;
+
+        // fetch_history returns entries newest-first, then the daemon reverses them
+        // to chronological order (oldest → newest). Map each {prompt,answer} → messages.
+        var messages = new List<JsonObject>();
+        foreach (var e in entries)
+        {
+            if (e is not JsonObject obj) continue;
+            var prompt = obj["prompt"]?.GetValue<string>();
+            var answer = obj["answer"]?.GetValue<string>();
+            if (!string.IsNullOrWhiteSpace(prompt))
+                messages.Add(new JsonObject { ["role"] = "user", ["content"] = prompt });
+            if (!string.IsNullOrWhiteSpace(answer))
+                messages.Add(new JsonObject { ["role"] = "assistant", ["content"] = answer });
+        }
+
+        // The newest Mnemosyne marker (SQLite CURRENT_TIMESTAMP, lexicographically sortable).
+        string? newest = null;
+        if (entries.Count > 0 && entries[^1] is JsonObject last)
+            newest = last["created_at"]?.GetValue<string>() ?? last["timestamp"]?.GetValue<string>();
+
+        bool sameRoot = string.Equals(contextRoot, _lastSyncedRoot, StringComparison.Ordinal);
+        bool hasHistory = messages.Count > 0;
+
+        // Skip the rebuild when Pythia is already showing this root's history and
+        // Mnemosyne hasn't moved since we last synced it.
+        if (sameRoot && hasHistory
+            && newest is not null && _lastSyncedTimestamp is not null
+            && string.CompareOrdinal(newest, _lastSyncedTimestamp) <= 0)
+        {
+            return;
+        }
+
+        _lastSyncedRoot = contextRoot;
+        _lastSyncedTimestamp = newest;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            _history.Clear();
+            _history.AddRange(messages);
+            Messages.Children.Clear();
+            foreach (var m in messages)
+            {
+                var role = m["role"]?.GetValue<string>();
+                var content = m["content"]?.GetValue<string>() ?? "";
+                if (role == "user") AddUserMessage(content);
+                else if (role == "assistant") AddPythiaMessage(content);
+            }
+            if (messages.Count > 0)
+                AddStatus($"↻ {messages.Count / 2} exchanges restored from Mnemosyne");
+        });
     }
 
     private void OnReady(IReadOnlyList<CompanionInfo> roster)
@@ -221,7 +298,7 @@ public partial class PythiaPanel : UserControl
     {
         var bubble = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0x1B, 0x24, 0x33)),
+            Background = new SolidColorBrush(_ui.UserBubble),
             CornerRadius = new CornerRadius(8, 2, 8, 8),
             HorizontalAlignment = HorizontalAlignment.Right,
             MaxWidth = 460,

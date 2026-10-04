@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Go to File" Height="440" Width="560"
         WindowStyle="ToolWindow" ResizeMode="CanResize" ShowInTaskbar="False"
-        Background="{StaticResource PanelBackground}" Foreground="{StaticResource Foreground}">
+        Background="{DynamicResource PanelBackground}" Foreground="{DynamicResource Foreground}">
     <DockPanel Margin="10">
         <TextBox x:Name="Query" DockPanel.Dock="Top" Padding="6,4" FontSize="14"
                  PreviewKeyDown="OnQueryKeyDown" TextChanged="OnQueryChanged"/>
@@ -13,8 +13,8 @@
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Glyph}" Width="18" Foreground="{StaticResource Accent}"/>
-                        <TextBlock Text="{Binding Display}" Foreground="{StaticResource Foreground}"/>
+                        <TextBlock Text="{Binding Glyph}" Width="18" Foreground="{DynamicResource Accent}"/>
+                        <TextBlock Text="{Binding Display}" Foreground="{DynamicResource Foreground}"/>
                     </StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>

@@ -25,8 +25,8 @@ public partial class DebugWindow : Window
         Log.Text = string.Join(Environment.NewLine, log);
         Log.ScrollToEnd();
         StatusDot.Fill = _bridge.IsRunning
-            ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8C, 0x7A, 0xB8))
-            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x5A, 0x60, 0x68));
+            ? (System.Windows.Media.Brush)(TryFindResource("Accent") ?? System.Windows.Media.Brushes.Gray)
+            : (System.Windows.Media.Brush)(TryFindResource("MutedForeground") ?? System.Windows.Media.Brushes.Gray);
     }
 
     private async void OnRestart(object sender, RoutedEventArgs e)

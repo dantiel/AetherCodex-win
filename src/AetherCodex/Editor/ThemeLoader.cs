@@ -48,6 +48,17 @@ public static class ThemeLoader
                 ? ThemeColor.Parse(pd.GetValueOrDefault(key), fallback)
                 : fallback;
 
+        Color? TopColorOrNull(string key)
+            => root.TryGetValue(key, out var v) && v is string s
+                ? ThemeColor.Parse(s, default)
+                : null;
+
+        Color? PythiaColorOrNull(string key)
+            => root.TryGetValue("pythia", out var p) && p is Dictionary<string, object?> pd
+               && pd.TryGetValue(key, out var v) && v is string s
+                ? ThemeColor.Parse(s, default)
+                : null;
+
         var background = EditorColor("background", Color.FromRgb(0x06, 0x07, 0x0D));
         var foreground = EditorColor("foreground", Color.FromRgb(0x8E, 0x94, 0xA0));
 
@@ -76,6 +87,13 @@ public static class ThemeLoader
             PythiaComplementary = PythiaColor("complementary", Color.FromRgb(0xB0, 0xA0, 0x6E)),
             PythiaCodeBackground = PythiaColor("codeBackground", background),
             PythiaCodeForeground = PythiaColor("codeForeground", foreground),
+            SidebarBackground = TopColorOrNull("sidebarBackground"),
+            SidebarAccent = TopColorOrNull("sidebarAccent"),
+            SidebarForeground = TopColorOrNull("sidebarForeground"),
+            RulerBackground = TopColorOrNull("rulerBackground"),
+            RulerForeground = TopColorOrNull("rulerForeground"),
+            RulerSeparator = TopColorOrNull("rulerSeparator"),
+            Shine = PythiaColorOrNull("shine"),
             Scopes = scopes,
         };
     }

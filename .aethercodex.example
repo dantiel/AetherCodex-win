@@ -1,0 +1,12 @@
+---
+# ÆtherCodex — Windows project context.
+#
+# Copy this file to `.aethercodex` (project root) and adjust. The daemon resolves
+# the nearest `.aethercodex` by walking up from the opened folder, so the whole
+# window is polymorphic: opening any project inherits that project's context.
+#
+# Pythia's API credentials are supplied via environment variables or a home-level
+# `~/.aethercodex` (merged underneath by AetherOracle's CONFIG). This file names
+# the context and, optionally, overrides per-project settings.
+name: AetherCodex-Win
+allowed-commands: "*"
