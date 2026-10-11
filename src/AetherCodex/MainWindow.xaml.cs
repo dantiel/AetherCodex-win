@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private OpenDocument? _activeDoc;
     private readonly List<OpenDocument> _documents = new();
     private bool _suppressDirty;
+    private bool _syncingLanguage;
     private RegexHighlighter? _highlighter;
     private bool _sidebarOpen = true;
     private bool _pythiaOpen = true;
@@ -64,6 +65,7 @@ public partial class MainWindow : Window
         ApplyEditorSettings();
         UpdateWindowTitle();
         RailSymbolText.Text = _settings.RailSymbol;
+        UpdateLanguageCombo();
 
         OverflowButton.ContextMenu = BuildOverflowMenu();
 
@@ -88,6 +90,7 @@ public partial class MainWindow : Window
 
         Editor.TextChanged += (_, _) => MarkDirty();
         RichEditor.DocumentChanged += (_, _) => MarkDirty();
+        RichEditor.SourceModeChanged += (_, _) => UpdateSourceButton();
 
         BindShortcuts();
 
@@ -343,6 +346,8 @@ public partial class MainWindow : Window
         RenderDocument(doc);
         ApplyEditorSettings();
         UpdateFilePath();
+        UpdateLanguageCombo();
+        UpdateSourceButton();
         RebuildTabs();
     }
 
@@ -378,7 +383,6 @@ public partial class MainWindow : Window
                 }
                 else
                     RichEditor.LoadDocument(doc.Rich ?? new FlowDocument());
-                LanguageText.Text = doc.Language;
                 PreviewButton.Visibility = Visibility.Collapsed;
                 SetPreviewOpen(false);
                 Editor.Visibility = Visibility.Collapsed;
@@ -388,7 +392,6 @@ public partial class MainWindow : Window
             {
                 Editor.Text = doc.Text;
                 _language = Languages.FromPath(doc.Path);
-                LanguageText.Text = _language.Name;
                 ReattachHighlighter();
                 Editor.ScrollToHome();
 
@@ -606,12 +609,13 @@ public partial class MainWindow : Window
                 File.WriteAllText(path, doc.Text, new UTF8Encoding(false));
                 _language = Languages.FromPath(path);
                 doc.Language = _language.Name;
-                LanguageText.Text = _language.Name;
                 ReattachHighlighter();
             }
             doc.Path = path;
             doc.Dirty = false;
             UpdateFilePath();
+            UpdateLanguageCombo();
+            UpdateSourceButton();
             RebuildTabs();
             _ = ActivateContextAndSyncAsync(path);
         }
@@ -724,7 +728,6 @@ public partial class MainWindow : Window
         try
         {
             _language = Languages.FromPath("x.txt");
-            LanguageText.Text = _language.Name;
             Editor.Text = "";
             RichEditor.NewDocument();
             Editor.Visibility = Visibility.Visible;
@@ -738,6 +741,8 @@ public partial class MainWindow : Window
             _suppressDirty = false;
         }
         UpdateFilePath();
+        UpdateLanguageCombo();
+        UpdateSourceButton();
         RebuildTabs();
     }
 
@@ -766,16 +771,16 @@ public partial class MainWindow : Window
             {
                 _language = Languages.FromPath(doc.Path);
                 doc.Language = _language.Name;
-                LanguageText.Text = _language.Name;
                 ReattachHighlighter();
             }
             else
             {
                 doc.Language = DocumentIO.IsMarkdown(doc.Path) ? "Markdown" : "Rich Text";
-                LanguageText.Text = doc.Language;
             }
         }
         UpdateFilePath();
+        UpdateLanguageCombo();
+        UpdateSourceButton();
         RebuildTabs();
     }
 
@@ -810,8 +815,7 @@ public partial class MainWindow : Window
         };
         var glyph = new TextBlock { FontFamily = (FontFamily)FindResource("IconFont"), Text = "\uE711", FontSize = 9 };
         close.Content = glyph;
-        close.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true; // don't activate the tab
-        close.Click += (_, _) => CloseDocument(doc);
+        close.Click += (_, e) => { e.Handled = true; CloseDocument(doc); };
 
         var panel = new DockPanel();
         DockPanel.SetDock(close, Dock.Right);
@@ -840,11 +844,131 @@ public partial class MainWindow : Window
     private void UpdateFilePath()
     {
         if (_activeDoc is null)
-            FilePathText.Text = "no file open";
-        else if (_activeDoc.Path.Length == 0)
-            FilePathText.Text = _activeDoc.Dirty ? "● untitled" : "untitled";
-        else
-            FilePathText.Text = (_activeDoc.Dirty ? "● " : "") + _activeDoc.Path;
+        {
+            FileIconText.Text = "·";
+            FileNameText.Text = "no file open";
+            FilePathText.Text = "";
+            return;
+        }
+
+        var doc = _activeDoc;
+        FileIconText.Text = doc.IsRich
+            ? (doc.IsMarkdown ? "✎" : "📄")
+            : GlyphForLanguage(_language.Key);
+
+        string dot = doc.Dirty ? "● " : "";
+        if (doc.Path.Length == 0)
+        {
+            FileNameText.Text = dot + "untitled";
+            FilePathText.Text = "";
+            return;
+        }
+
+        FileNameText.Text = dot + Path.GetFileName(doc.Path);
+        FilePathText.Text = RelativeDirectory(doc.Path);
+    }
+
+    private static string GlyphForLanguage(string key) => key switch
+    {
+        "ruby" => "◆",
+        "python" => "🐍",
+        "javascript" => "§",
+        "typescript" => "§",
+        "csharp" => "♯",
+        "c" => "◈",
+        "cpp" => "◈",
+        "json" => "≡",
+        "yaml" => "≡",
+        "xml" => "◇",
+        "css" => "◇",
+        "shell" => "▷",
+        "markdown" => "✎",
+        _ => "·",
+    };
+
+    private string RelativeDirectory(string path)
+    {
+        if (_projectRoot.Length == 0)
+            return Path.GetDirectoryName(path) ?? "";
+
+        try
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_projectRoot));
+            var dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? "";
+            if (dir.Equals(root, StringComparison.OrdinalIgnoreCase))
+                return "";
+            if (dir.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return dir[(root.Length + 1)..];
+            return dir;
+        }
+        catch
+        {
+            return Path.GetDirectoryName(path) ?? "";
+        }
+    }
+
+    private void UpdateLanguageCombo()
+    {
+        _syncingLanguage = true;
+        try
+        {
+            LanguageCombo.Items.Clear();
+            foreach (var lang in Languages.All)
+                LanguageCombo.Items.Add(lang.Name);
+
+            if (_activeDoc is null)
+            {
+                LanguageCombo.SelectedItem = null;
+                LanguageCombo.IsEnabled = false;
+                return;
+            }
+
+            if (_activeDoc.IsRich)
+            {
+                LanguageCombo.IsEnabled = false;
+                if (!LanguageCombo.Items.Contains(_activeDoc.Language))
+                    LanguageCombo.Items.Insert(0, _activeDoc.Language);
+                LanguageCombo.SelectedItem = _activeDoc.Language;
+            }
+            else
+            {
+                LanguageCombo.IsEnabled = true;
+                LanguageCombo.SelectedItem = _language.Name;
+            }
+        }
+        finally
+        {
+            _syncingLanguage = false;
+        }
+    }
+
+    private void UpdateSourceButton()
+    {
+        bool markdown = _activeDoc is { IsRich: true, IsMarkdown: true };
+        SourceButton.Visibility = markdown ? Visibility.Visible : Visibility.Collapsed;
+        SourceButton.IsChecked = RichEditor.SourceMode;
+        SourceButton.Content = RichEditor.SourceMode ? "Rich" : "Source";
+    }
+
+    private void OnToggleSource(object sender, RoutedEventArgs e)
+    {
+        RichEditor.ToggleSource();
+        UpdateSourceButton();
+    }
+
+    private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingLanguage) return;
+        if (_activeDoc is null || _activeDoc.IsRich) return;
+        if (LanguageCombo.SelectedItem is not string name) return;
+
+        var lang = Languages.All.FirstOrDefault(l => l.Name == name);
+        if (lang is null) return;
+
+        _language = lang;
+        _activeDoc.Language = lang.Name;
+        ReattachHighlighter();
+        UpdateFilePath();
     }
 
     private void UpdateWindowTitle()
@@ -868,6 +992,7 @@ public partial class MainWindow : Window
         Browser.SetRoot(directory);
         UpdateWindowTitle();
         Title = WindowTitleText.Text;
+        UpdateFilePath();
         _ = ActivateContextAndSyncAsync(directory);
     }
 

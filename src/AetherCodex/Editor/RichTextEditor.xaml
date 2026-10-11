@@ -43,10 +43,6 @@
 
                 <Button Content="Img" ToolTip="Insert image" Style="{StaticResource IconButton}" Click="OnInsertImage"/>
                 <Button Content="Clear" ToolTip="Clear formatting" Style="{StaticResource IconButton}" Click="OnClearFormatting"/>
-
-                <Border Width="1" Margin="6,3" Background="{DynamicResource Border}"/>
-                <ToggleButton x:Name="SourceBtn" Content="Source" ToolTip="Toggle markdown source view"
-                              Style="{StaticResource ToolButton}" Click="OnToggleSource" Visibility="Collapsed"/>
             </WrapPanel>
         </Border>
 

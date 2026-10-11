@@ -36,6 +36,9 @@ public partial class RichTextEditor : UserControl
     /// <summary>Raised whenever the document text changes (dirty tracking).</summary>
     public event EventHandler? DocumentChanged;
 
+    /// <summary>Raised when the source/rich view toggles (markdown only).</summary>
+    public event EventHandler? SourceModeChanged;
+
     public RichTextEditor()
     {
         InitializeComponent();
@@ -63,7 +66,6 @@ public partial class RichTextEditor : UserControl
     public void LoadDocument(FlowDocument doc)
     {
         _isMarkdown = false;
-        SourceBtn.Visibility = Visibility.Collapsed;
         SetSourceMode(false);
         RichText.Document = doc;
         SyncToolbarState();
@@ -78,7 +80,6 @@ public partial class RichTextEditor : UserControl
         _loadingSource = true;
         SourceBox.Text = source;
         _loadingSource = false;
-        SourceBtn.Visibility = Visibility.Visible;
         RichText.Document = rendered;
         SetSourceMode(false);
         SyncToolbarState();
@@ -91,14 +92,14 @@ public partial class RichTextEditor : UserControl
         return _sourceMode ? SourceBox.Text : MarkdownSerializer.ToMarkdown(RichText.Document);
     }
 
-    private void OnToggleSource(object sender, RoutedEventArgs e) => SetSourceMode(!_sourceMode);
+    /// <summary>Toggle between the raw markdown source pane and the rich surface.</summary>
+    public void ToggleSource() => SetSourceMode(!_sourceMode);
 
     private void SetSourceMode(bool source)
     {
         if (_sourceMode == source) return;
         _sourceMode = source;
-        SourceBtn.IsChecked = source;
-        SourceBtn.Content = source ? "Rich" : "Source";
+        SourceModeChanged?.Invoke(this, EventArgs.Empty);
 
         if (source)
         {
@@ -128,7 +129,6 @@ public partial class RichTextEditor : UserControl
     public void NewDocument()
     {
         _isMarkdown = false;
-        SourceBtn.Visibility = Visibility.Collapsed;
         SetSourceMode(false);
         RichText.Document = new FlowDocument();
     }

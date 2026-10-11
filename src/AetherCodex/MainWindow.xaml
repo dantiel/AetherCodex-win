@@ -120,26 +120,22 @@
                 </StackPanel>
                 <Button x:Name="PreviewButton" DockPanel.Dock="Right" Content="◉ Preview" Style="{StaticResource IconButton}"
                         ToolTip="Toggle markdown preview" Click="OnTogglePreview" Margin="8,0,0,0" Visibility="Collapsed"/>
-                <TextBlock x:Name="LanguageText" DockPanel.Dock="Right" Foreground="{DynamicResource Accent}"
-                           FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                    <Button Style="{StaticResource RailAction}" ToolTip="Open File (Ctrl+O)" Click="OnOpenFile">
-                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8E5;" FontSize="15"/>
-                    </Button>
-                    <Button Style="{StaticResource RailAction}" ToolTip="Save (Ctrl+S)" Click="OnSave">
-                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE74E;" FontSize="15"/>
-                    </Button>
-                    <Button Style="{StaticResource RailAction}" ToolTip="Save As (Ctrl+Shift+S)" Click="OnSaveAs">
-                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE792;" FontSize="15"/>
-                    </Button>
-                    <Border Width="1" Margin="4,10" Background="{DynamicResource Border}"/>
-                    <Button Style="{StaticResource RailAction}" ToolTip="Settings (Ctrl+,)" Click="OnShowSettings">
-                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE713;" FontSize="15"/>
-                    </Button>
-                </StackPanel>
-                <TextBlock x:Name="FilePathText" Foreground="{DynamicResource MutedForeground}"
-                           FontFamily="Cascadia Mono, Consolas" FontSize="11" Text="no file open"
-                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <ToggleButton x:Name="SourceButton" DockPanel.Dock="Right" Content="Source" Style="{StaticResource ToolButton}"
+                              ToolTip="Toggle markdown source view" Click="OnToggleSource" Margin="8,0,0,0" Visibility="Collapsed"/>
+                <ComboBox x:Name="LanguageCombo" DockPanel.Dock="Right" Width="132" FontSize="11"
+                          VerticalAlignment="Center" Margin="8,0,0,0" SelectionChanged="OnLanguageChanged"/>
+                <DockPanel VerticalAlignment="Center">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="FileIconText" FontSize="14" Foreground="{DynamicResource Accent}"
+                                   VerticalAlignment="Center" Margin="0,0,6,0" Text="·"/>
+                        <TextBlock x:Name="FileNameText" FontSize="13" FontWeight="Bold"
+                                   Foreground="{DynamicResource Foreground}" VerticalAlignment="Center"
+                                   Text="no file open"/>
+                    </StackPanel>
+                    <TextBlock x:Name="FilePathText" Foreground="{DynamicResource MutedForeground}"
+                               FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                               VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
             </DockPanel>
         </Border>
 
