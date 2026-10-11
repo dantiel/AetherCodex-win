@@ -2,34 +2,21 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="clr-namespace:AetherCodex.Models">
-    <DockPanel Background="{DynamicResource SidebarBackground}">
-        <TextBlock DockPanel.Dock="Top" Margin="12,10,12,6"
-                   Foreground="{DynamicResource MutedForeground}"
-                   FontSize="11" Text="ÆTHER BROWSER" TextTrimming="CharacterEllipsis"/>
-        <TreeView x:Name="Tree" BorderThickness="0" Background="Transparent"
-                  ItemsSource="{Binding}">
-            <TreeView.ItemContainerStyle>
-                <Style TargetType="TreeViewItem">
-                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                    <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource Foreground}"/>
-                    <Setter Property="Padding" Value="0,2"/>
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                    <Style.Triggers>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource Selection}"/>
-                        </Trigger>
-                    </Style.Triggers>
-                </Style>
-            </TreeView.ItemContainerStyle>
-            <TreeView.ItemTemplate>
-                <HierarchicalDataTemplate DataType="{x:Type models:FileItem}" ItemsSource="{Binding Children}">
-                    <StackPanel Orientation="Horizontal" Margin="0,1">
-                        <TextBlock Width="18" Foreground="{DynamicResource Accent}" Text="{Binding Glyph}"/>
-                        <TextBlock Text="{Binding Name}"/>
-                    </StackPanel>
-                </HierarchicalDataTemplate>
-            </TreeView.ItemTemplate>
-        </TreeView>
-    </DockPanel>
+    <TreeView x:Name="Tree" BorderThickness="0" Background="Transparent"
+              ItemsSource="{Binding}" Padding="0,2">
+        <TreeView.ItemContainerStyle>
+            <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+            </Style>
+        </TreeView.ItemContainerStyle>
+        <TreeView.ItemTemplate>
+            <HierarchicalDataTemplate DataType="{x:Type models:FileItem}" ItemsSource="{Binding Children}">
+                <StackPanel Orientation="Horizontal" Margin="0,1">
+                    <TextBlock Width="22" Foreground="{DynamicResource Accent}" Text="{Binding Glyph}"/>
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </HierarchicalDataTemplate>
+        </TreeView.ItemTemplate>
+    </TreeView>
 </UserControl>

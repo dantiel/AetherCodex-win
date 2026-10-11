@@ -104,6 +104,7 @@ public sealed class StreamEvent
     public string? StatusType { get; }
     public JsonObject? Data { get; }
     public int? RequestId { get; }
+    public string? Uuid { get; }
     public JsonObject Raw { get; }
 
     public StreamEvent(JsonObject frame)
@@ -115,6 +116,7 @@ public sealed class StreamEvent
         var payload = frame["payload"] as JsonObject;
         StatusType = payload?["type"]?.GetValue<string>();
         Data = payload?["data"] as JsonObject;
+        Uuid = payload?["uuid"]?.GetValue<string>();
     }
 
     public string? StringData(string key) => Data?[key]?.GetValue<string>();

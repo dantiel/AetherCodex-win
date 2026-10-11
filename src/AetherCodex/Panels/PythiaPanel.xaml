@@ -3,11 +3,22 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <DockPanel Background="{DynamicResource PanelBackground}">
         <!-- Header -->
-        <Border DockPanel.Dock="Top" Padding="12,10" Background="{DynamicResource ChromeBackground}">
+        <Border DockPanel.Dock="Top" Height="48" Padding="12,10,8,10" Background="{DynamicResource ChromeBackground}">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                     <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{DynamicResource MutedForeground}" VerticalAlignment="Center"/>
                     <TextBlock Margin="8,0,0,0" Text="PYTHIA" Foreground="{DynamicResource Foreground}" FontWeight="Bold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="OnMinimize">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE921;" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="PythiaMaxRestoreButton" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="OnMaximizeRestore">
+                        <TextBlock x:Name="PythiaMaxRestoreGlyph" FontFamily="{StaticResource IconFont}" Text="&#xE922;" FontSize="10"/>
+                    </Button>
+                    <Button Style="{StaticResource CloseButton}" ToolTip="Close" Click="OnClose">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8BB;" FontSize="10"/>
+                    </Button>
                 </StackPanel>
                 <Button x:Name="InterruptButton" DockPanel.Dock="Right" Content="■" Style="{StaticResource IconButton}"
                         ToolTip="Interrupt" Click="OnInterrupt"/>
@@ -25,15 +36,7 @@
             </DockPanel>
         </Border>
 
-        <!-- Messages -->
-        <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      HorizontalContentAlignment="Stretch"
-                      Padding="8">
-            <StackPanel x:Name="Messages" HorizontalAlignment="Stretch"/>
-        </ScrollViewer>
-
-        <!-- Input -->
+        <!-- Input (docked before the fill child so it sits at the bottom edge) -->
         <Border DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource Border}" Background="{DynamicResource ChromeBackground}">
             <DockPanel Margin="8">
                 <Button DockPanel.Dock="Right" Content="Send" Click="OnSend" MinWidth="64" Margin="8,0,0,0"/>
@@ -43,5 +46,13 @@
                          ToolTip="Enter to send, Shift+Enter for newline"/>
             </DockPanel>
         </Border>
+
+        <!-- Messages (last child fills the remaining space) -->
+        <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      HorizontalContentAlignment="Stretch"
+                      Padding="8">
+            <StackPanel x:Name="Messages" HorizontalAlignment="Stretch"/>
+        </ScrollViewer>
     </DockPanel>
 </UserControl>

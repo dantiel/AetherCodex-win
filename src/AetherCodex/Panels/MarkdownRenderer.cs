@@ -1,14 +1,44 @@
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Navigation;
 
 namespace AetherCodex.Panels;
 
 /// <summary>Markdown → WPF FlowDocument. A competent subset: headings, emphasis,
-/// inline code, fenced code blocks, lists, blockquotes, links, tables, hr.</summary>
+/// inline code, fenced code blocks, lists, blockquotes, links, tables, hr, and
+/// &lt;file&gt; references rendered as clickable links.</summary>
 public static class MarkdownRenderer
 {
-    public static FlowDocument Render(string markdown, Color foreground, Color codeBackground, double baseFontSize = 13)
+    /// <summary>Target of a &lt;file&gt; reference: a repo-relative path, an optional
+    /// 1-based line/column to jump to, and the display label.</summary>
+    public sealed record FileLink(string Path, int Line = 0, int Column = 0, string? Label = null);
+
+    /// <summary>Raised when a rendered &lt;file&gt; link is clicked. The host window
+    /// subscribes and opens the file. Surfaces opt in via <see cref="WireFileLinks"/>.</summary>
+    public static event Action<string, int, int>? FileLinkRequested;
+
+    /// <summary>Attach click routing for rendered &lt;file&gt; links to a markdown
+    /// surface (Pythia cards, the markdown preview).</summary>
+    public static void WireFileLinks(RichTextBox rtb)
+        => rtb.AddHandler(Hyperlink.RequestNavigateEvent,
+            new RequestNavigateEventHandler(HandleFileLink), handledEventsToo: true);
+
+    public static void WireFileLinks(FlowDocumentScrollViewer viewer)
+        => viewer.AddHandler(Hyperlink.RequestNavigateEvent,
+            new RequestNavigateEventHandler(HandleFileLink), handledEventsToo: true);
+
+    private static void HandleFileLink(object sender, RequestNavigateEventArgs e)
+    {
+        e.Handled = true;
+        if (e.OriginalSource is Hyperlink h && h.Tag is FileLink fl)
+            FileLinkRequested?.Invoke(fl.Path, fl.Line, fl.Column);
+    }
+
+    public static FlowDocument Render(string markdown, Color foreground, Color codeBackground, Color linkColor, double baseFontSize = 13)
     {
         var doc = new FlowDocument
         {
@@ -23,7 +53,9 @@ public static class MarkdownRenderer
         var para = new Paragraph();
         var inCode = false;
         var codeLang = "";
-        var codeBuilder = new System.Text.StringBuilder();
+        var codeBuilder = new StringBuilder();
+        List? currentList = null;
+        var currentOrdered = false;
 
         void FlushCode()
         {
@@ -36,9 +68,29 @@ public static class MarkdownRenderer
                 FontFamily = new FontFamily("Cascadia Mono, Consolas"),
                 FontSize = baseFontSize - 1,
             };
-            block.Inlines.Add(new Run(codeBuilder.ToString().TrimEnd('\n')));
+            block.Tag = "code:" + codeLang;
+            // Wrap long code lines so a fenced block can never demand horizontal
+            // space: the Pythia pane renders markdown without a scroll area, so
+            // every block must reflow within the panel width.
+            foreach (var rawLine in codeBuilder.ToString().TrimEnd('\n').Split('\n'))
+            {
+                if (block.Inlines.Count > 0) block.Inlines.Add(new LineBreak());
+                AppendWrapped(block.Inlines, rawLine.TrimEnd(), 120);
+            }
             doc.Blocks.Add(block);
             codeBuilder.Clear();
+        }
+
+        static void AppendWrapped(InlineCollection inlines, string line, int width)
+        {
+            var rest = line;
+            while (rest.Length > width)
+            {
+                inlines.Add(new Run(rest[..width]));
+                inlines.Add(new LineBreak());
+                rest = rest[width..];
+            }
+            inlines.Add(new Run(rest));
         }
 
         void FlushParagraph()
@@ -48,6 +100,13 @@ public static class MarkdownRenderer
             para = new Paragraph();
         }
 
+        void FlushList()
+        {
+            if (currentList is null) return;
+            doc.Blocks.Add(currentList);
+            currentList = null;
+        }
+
         foreach (var raw in lines)
         {
             var line = raw.TrimEnd();
@@ -55,18 +114,18 @@ public static class MarkdownRenderer
             if (line.TrimStart().StartsWith("```"))
             {
                 if (inCode) { FlushCode(); inCode = false; }
-                else { FlushParagraph(); inCode = true; codeLang = line.TrimStart()[3..].Trim(); }
+                else { FlushList(); FlushParagraph(); inCode = true; codeLang = line.TrimStart()[3..].Trim(); }
                 continue;
             }
             if (inCode) { codeBuilder.AppendLine(raw); continue; }
 
             var trimmed = line.TrimStart();
-            if (trimmed.Length == 0) { FlushParagraph(); continue; }
+            if (trimmed.Length == 0) { FlushList(); FlushParagraph(); continue; }
 
             // Headings
             if (TryHeading(trimmed, out var level, out var headingText))
             {
-                FlushParagraph();
+                FlushList(); FlushParagraph();
                 var h = new Paragraph { Margin = new Thickness(0, level <= 2 ? 10 : 6, 0, 4) };
                 var size = baseFontSize * (2.2 - level * 0.18);
                 h.Inlines.Add(new Run(headingText)
@@ -74,6 +133,7 @@ public static class MarkdownRenderer
                     FontSize = size,
                     FontWeight = FontWeights.Bold,
                 });
+                h.Tag = "md-heading-" + level;
                 doc.Blocks.Add(h);
                 continue;
             }
@@ -81,52 +141,67 @@ public static class MarkdownRenderer
             // Horizontal rule
             if (trimmed == "---" || trimmed == "***" || trimmed == "___")
             {
-                FlushParagraph();
-                doc.Blocks.Add(new Paragraph { BorderThickness = new Thickness(0, 0, 0, 1), BorderBrush = new SolidColorBrush(foreground) { Opacity = 0.25 }, Margin = new Thickness(0, 8, 0, 8) });
+                FlushList(); FlushParagraph();
+                doc.Blocks.Add(new Paragraph { Tag = "md-hr", BorderThickness = new Thickness(0, 0, 0, 1), BorderBrush = new SolidColorBrush(foreground) { Opacity = 0.25 }, Margin = new Thickness(0, 8, 0, 8) });
                 continue;
             }
 
             // Blockquote
             if (trimmed.StartsWith("> "))
             {
-                FlushParagraph();
+                FlushList(); FlushParagraph();
                 var q = new Paragraph
                 {
+                    Tag = "md-quote",
                     Margin = new Thickness(12, 2, 0, 6),
                     BorderThickness = new Thickness(2, 0, 0, 0),
                     BorderBrush = new SolidColorBrush(foreground) { Opacity = 0.5 },
                     Padding = new Thickness(10, 0, 0, 0),
                 };
-                AddInlineMarkdown(q, trimmed[2..], foreground);
+                AddInlineMarkdown(q, trimmed[2..], foreground, linkColor);
                 doc.Blocks.Add(q);
                 continue;
             }
 
-            // Lists
-            if (TryList(trimmed, out var bullet, out var itemText))
+            // Lists → native WPF List/ListItem so bullets/numbering match the RTF
+            // importer's output (real markers, hanging indent, grouped items).
+            if (TryList(trimmed, out var ordered, out var itemText))
             {
                 FlushParagraph();
-                var listItem = new Paragraph { Margin = new Thickness(24, 1, 0, 1) };
-                listItem.Inlines.Add(new Run(bullet + " ") { FontWeight = FontWeights.Bold });
-                AddInlineMarkdown(listItem, itemText, foreground);
-                doc.Blocks.Add(listItem);
+                if (currentList is null || currentOrdered != ordered)
+                {
+                    FlushList();
+                    currentOrdered = ordered;
+                    currentList = new List
+                    {
+                        MarkerStyle = ordered ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc,
+                        Margin = new Thickness(24, 2, 0, 8),
+                    };
+                }
+                var item = new ListItem();
+                var itemPara = new Paragraph { Margin = new Thickness(0, 1, 0, 1) };
+                AddInlineMarkdown(itemPara, itemText, foreground, linkColor);
+                item.Blocks.Add(itemPara);
+                currentList.ListItems.Add(item);
                 continue;
             }
 
             // Table row
             if (trimmed.StartsWith('|') && trimmed.EndsWith('|'))
             {
-                FlushParagraph();
+                FlushList(); FlushParagraph();
                 AddTable(doc, trimmed, foreground, codeBackground, baseFontSize);
                 continue;
             }
 
-            // Normal paragraph
+            // Normal paragraph (ends any open list).
+            FlushList();
             if (para.Inlines.Count > 0) para.Inlines.Add(new LineBreak());
-            AddInlineMarkdown(para, line, foreground);
+            AddInlineMarkdown(para, line, foreground, linkColor);
         }
 
         if (inCode) FlushCode();
+        FlushList();
         FlushParagraph();
         return doc;
     }
@@ -145,29 +220,29 @@ public static class MarkdownRenderer
         return false;
     }
 
-    private static bool TryList(string trimmed, out string bullet, out string text)
+    private static bool TryList(string trimmed, out bool ordered, out string text)
     {
-        bullet = ""; text = "";
+        ordered = false; text = "";
         if (trimmed.Length > 2 && (trimmed[0] == '-' || trimmed[0] == '*' || trimmed[0] == '+') && trimmed[1] == ' ')
         {
-            bullet = "•"; text = trimmed[2..]; return true;
+            text = trimmed[2..]; return true;
         }
-        var match = System.Text.RegularExpressions.Regex.Match(trimmed, @"^\d+[.)]\s+(.*)$");
+        var match = Regex.Match(trimmed, @"^\d+[.)]\s+(.*)$");
         if (match.Success)
         {
-            bullet = match.Value[..match.Value.IndexOf(' ')].TrimEnd('.', ')') + ".";
+            ordered = true;
             text = match.Groups[1].Value;
             return true;
         }
         return false;
     }
 
-    private static void AddInlineMarkdown(Paragraph para, string text, Color foreground)
+    private static void AddInlineMarkdown(Paragraph para, string text, Color foreground, Color linkColor)
     {
-        AddInlineMarkdown(para.Inlines, text, foreground);
+        AddInlineMarkdown(para.Inlines, text, foreground, linkColor);
     }
 
-    private static void AddInlineMarkdown(InlineCollection inlines, string text, Color foreground)
+    private static void AddInlineMarkdown(InlineCollection inlines, string text, Color foreground, Color linkColor)
     {
         var span = new Span();
         var tokenizer = new InlineTokenizer(text);
@@ -179,6 +254,17 @@ public static class MarkdownRenderer
                 case InlineKind.Italic: span.Inlines.Add(new Run(content) { FontStyle = FontStyles.Italic }); break;
                 case InlineKind.Code: span.Inlines.Add(CodeRun(content, foreground)); break;
                 case InlineKind.Link: span.Inlines.Add(new Hyperlink(new Run(content)) { NavigateUri = new Uri(content, UriKind.RelativeOrAbsolute) }); break;
+                case InlineKind.FileLink:
+                    var fl = tokenizer.FileLink ?? new FileLink(content);
+                    span.Inlines.Add(new Hyperlink(new Run(fl.Label ?? fl.Path))
+                    {
+                        NavigateUri = new Uri("aetherfile:///open"),
+                        ToolTip = fl.Line > 0 ? $"{fl.Path}:{fl.Line}" : fl.Path,
+                        Tag = fl,
+                        Foreground = new SolidColorBrush(linkColor),
+                        TextDecorations = null,
+                    });
+                    break;
                 case InlineKind.Text: span.Inlines.Add(new Run(content)); break;
             }
         }
@@ -197,7 +283,7 @@ public static class MarkdownRenderer
     private static void AddTable(FlowDocument doc, string line, Color fg, Color codeBg, double size)
     {
         var cells = line.Trim('|').Split('|').Select(c => c.Trim()).ToArray();
-        var para = new Paragraph { Margin = new Thickness(0, 2, 0, 2), FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = size - 1 };
+        var para = new Paragraph { Tag = "md-table", Margin = new Thickness(0, 2, 0, 2), FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = size - 1 };
         foreach (var c in cells)
         {
             para.Inlines.Add(new Run(" " + c + " "));
@@ -206,7 +292,7 @@ public static class MarkdownRenderer
         doc.Blocks.Add(para);
     }
 
-    private enum InlineKind { Text, Bold, Italic, Code, Link }
+    private enum InlineKind { Text, Bold, Italic, Code, Link, FileLink }
 
     private ref struct InlineTokenizer
     {
@@ -215,9 +301,11 @@ public static class MarkdownRenderer
 
         public InlineTokenizer(string text) { _text = text; _pos = 0; }
 
+        public FileLink? FileLink { get; private set; }
+
         public bool Next(out InlineKind kind, out string content)
         {
-            kind = InlineKind.Text; content = "";
+            kind = InlineKind.Text; content = ""; FileLink = null;
             if (_pos >= _text.Length) return false;
 
             if (_text[_pos] == '`')
@@ -251,6 +339,22 @@ public static class MarkdownRenderer
                     }
                 }
             }
+            if (_text[_pos] == '<')
+            {
+                var link = TryParseFileTag();
+                if (link is not null)
+                {
+                    kind = InlineKind.FileLink;
+                    FileLink = link;
+                    return true;
+                }
+                // Not a <file> tag — emit the angle bracket as plain text so other
+                // inline HTML-ish markup isn't silently swallowed.
+                kind = InlineKind.Text;
+                content = "<";
+                _pos++;
+                return true;
+            }
 
             // Accumulate plain text up to the next special char.
             int start = _pos;
@@ -259,10 +363,44 @@ public static class MarkdownRenderer
             return content.Length > 0;
         }
 
+        private FileLink? TryParseFileTag()
+        {
+            // _text[_pos] == '<'
+            int gt = _text.IndexOf('>', _pos);
+            if (gt < 0) return null;
+            var open = _text[(_pos + 1)..gt].Trim();
+            if (!IsFileOpenTag(open)) return null;
+            int close = _text.IndexOf("</file>", gt + 1, StringComparison.OrdinalIgnoreCase);
+            if (close < 0) return null;
+
+            var inner = _text[(gt + 1)..close];
+            var label = inner.Trim();
+
+            var path = Attr(open, "path") ?? "";
+            int.TryParse(Attr(open, "line"), out var line);
+            int.TryParse(Attr(open, "column"), out var column);
+
+            if (string.IsNullOrWhiteSpace(path)) path = label;
+            if (string.IsNullOrWhiteSpace(label)) label = path;
+
+            _pos = close + "</file>".Length;
+            return new FileLink(path, line, column, label);
+        }
+
+        private static bool IsFileOpenTag(string open)
+            => open.Equals("file", StringComparison.OrdinalIgnoreCase)
+            || (open.Length > 4 && open.StartsWith("file", StringComparison.OrdinalIgnoreCase) && char.IsWhiteSpace(open[4]));
+
+        private static string? Attr(string openTag, string name)
+        {
+            var m = Regex.Match(openTag, $@"\b{name}\s*=\s*""([^""]*)""", RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value : null;
+        }
+
         private static bool IsSpecial(string t, int i)
         {
             char c = t[i];
-            if (c == '`' || c == '*' || c == '_' || c == '[') return true;
+            if (c == '`' || c == '*' || c == '_' || c == '[' || c == '<') return true;
             return false;
         }
     }

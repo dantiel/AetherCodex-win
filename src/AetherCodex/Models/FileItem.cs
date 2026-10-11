@@ -12,7 +12,7 @@ public sealed class FileItem : INotifyPropertyChanged
 
     public ObservableCollection<FileItem> Children { get; } = new();
 
-    public string Glyph => IsDirectory ? "▸" : GlyphFor(Name);
+    public string Glyph => IsDirectory ? "📁" : GlyphFor(Name);
 
     private static string GlyphFor(string name)
     {

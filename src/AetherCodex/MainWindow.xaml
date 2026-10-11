@@ -3,89 +3,192 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:panels="clr-namespace:AetherCodex.Panels"
+        xmlns:editor="clr-namespace:AetherCodex.Editor"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="ÆtherCodex" Height="860" Width="1380"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None" ResizeMode="CanResize"
+        Background="{DynamicResource WindowBackground}">
 
-    <DockPanel>
-        <!-- Menu -->
-        <Menu DockPanel.Dock="Top" Background="{DynamicResource MenuBackground}" Foreground="{DynamicResource MenuForeground}">
-            <MenuItem Header="_File">
-                <MenuItem Header="_Open Folder…" Click="OnOpenFolder"/>
-                <MenuItem Header="Open _File…" Click="OnOpenFile"/>
-                <MenuItem Header="_Go to File…" InputGestureText="Ctrl+P" Click="OnGoToFile"/>
-                <Separator/>
-                <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSave"/>
-                <Separator/>
-                <MenuItem Header="E_xit" Click="OnExit"/>
-            </MenuItem>
-            <MenuItem Header="_View">
-                <MenuItem Header="Æther _Debug Window" Click="OnShowDebug"/>
-            </MenuItem>
-            <MenuItem x:Name="ThemeMenu" Header="_Theme"/>
-            <MenuItem Header="_Oracle">
-                <MenuItem Header="_Start / Restart daemon" Click="OnRestartDaemon"/>
-                <MenuItem Header="S_top daemon" Click="OnStopDaemon"/>
-                <MenuItem Header="_Interrupt" Click="OnInterrupt"/>
-            </MenuItem>
-        </Menu>
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="8"
+                            GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
 
-        <!-- Main body -->
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="250" MinWidth="140"/>
-                <ColumnDefinition Width="4"/>
-                <ColumnDefinition Width="*" MinWidth="300"/>
-                <ColumnDefinition Width="4"/>
-                <ColumnDefinition Width="400" MinWidth="240"/>
-            </Grid.ColumnDefinitions>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="48"/>
+            <ColumnDefinition x:Name="SidebarColumn" Width="260" MinWidth="160"/>
+            <ColumnDefinition x:Name="SidebarSplitterColumn" Width="6"/>
+            <ColumnDefinition Width="*" MinWidth="300"/>
+            <ColumnDefinition x:Name="PythiaSplitterColumn" Width="6"/>
+            <ColumnDefinition x:Name="PythiaColumn" Width="400" MinWidth="240"/>
+        </Grid.ColumnDefinitions>
 
-            <panels:FileBrowser x:Name="Browser" Grid.Column="0"/>
+        <!-- ── Full-height activity rail ── -->
+        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Background="{DynamicResource SidebarBackground}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock x:Name="RailSymbolText" Text="✦" FontSize="17" Foreground="{DynamicResource AccentBright}"
+                               HorizontalAlignment="Center" Margin="0,10,0,10" ToolTip="Application sigil"/>
+                    <ToggleButton x:Name="ExplorerRail" Style="{StaticResource RailToggle}" IsChecked="True"
+                                  ToolTip="Explorer (Ctrl+B)" Click="OnToggleSidebar">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" FontSize="16"/>
+                    </ToggleButton>
+                    <Button Style="{StaticResource RailAction}" ToolTip="Go to File (Ctrl+P)" Click="OnGoToFile">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE721;" FontSize="16"/>
+                    </Button>
+                    <Button Style="{StaticResource RailAction}" ToolTip="Find in Project (Ctrl+Shift+F)" Click="OnFindInProject">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE71E;" FontSize="16"/>
+                    </Button>
+                    <ToggleButton x:Name="OracleRail" Style="{StaticResource RailToggle}" IsChecked="True"
+                                  ToolTip="Oracle (Ctrl+J)" Click="OnTogglePythia">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE99A;" FontSize="16"/>
+                    </ToggleButton>
+                    <Button Style="{StaticResource RailAction}" ToolTip="Debug (Ctrl+Shift+D)" Click="OnShowDebug">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE943;" FontSize="16"/>
+                    </Button>
+                </StackPanel>
 
-            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
-                          Background="{DynamicResource Border}"/>
+                <Button x:Name="OverflowButton" DockPanel.Dock="Bottom" Style="{StaticResource RailAction}"
+                        ToolTip="Menu" Click="OpenOverflowMenu">
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE712;" FontSize="16"/>
+                </Button>
 
-            <!-- Editor pane -->
-            <DockPanel Grid.Column="2">
-                <Border DockPanel.Dock="Top" Padding="10,6" Background="{DynamicResource ChromeBackground}">
+                <Button x:Name="SettingsButton" DockPanel.Dock="Bottom" Style="{StaticResource RailAction}"
+                        ToolTip="Settings (Ctrl+,)" Click="OnShowSettings" Margin="0,0,0,8">
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE713;" FontSize="16"/>
+                </Button>
+            </DockPanel>
+        </Border>
+
+        <!-- Explorer sidebar (full height) -->
+        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Background="{DynamicResource SidebarBackground}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="48"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Configurable interactive project title (replaces the old EXPLORER header) -->
+                <Border Grid.Row="0" Height="48" Padding="12,12,8,8"
+                        MouseLeftButtonDown="DragRegion_MouseLeftButtonDown"
+                        MouseMove="DragRegion_MouseMove">
                     <DockPanel>
-                        <TextBlock x:Name="FilePathText" DockPanel.Dock="Left" Foreground="{DynamicResource MutedForeground}"
-                                   FontFamily="Cascadia Mono, Consolas" FontSize="11" Text="no file open"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                        <Button x:Name="PreviewButton" DockPanel.Dock="Right" Content="◉ Preview" Style="{StaticResource IconButton}"
-                                ToolTip="Toggle markdown preview" Click="OnTogglePreview" Margin="8,0,0,0" Visibility="Collapsed"/>
-                        <TextBlock x:Name="LanguageText" DockPanel.Dock="Right" Foreground="{DynamicResource Accent}"
-                                   FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" ToolTip="Open Folder" Click="OnOpenFolder">
+                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE838;" FontSize="14"/>
+                        </Button>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" ToolTip="Menu"
+                                Click="OpenOverflowMenu" VerticalAlignment="Center" Margin="4,0,0,0">
+                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE70D;" FontSize="10"/>
+                        </Button>
+                        <TextBlock x:Name="WindowTitleText" Text="ÆtherCodex" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Foreground}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
                     </DockPanel>
                 </Border>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition x:Name="EditorColumn" Width="*"/>
-                        <ColumnDefinition x:Name="PreviewSplitterColumn" Width="0"/>
-                        <ColumnDefinition x:Name="PreviewColumn" Width="0"/>
-                    </Grid.ColumnDefinitions>
-                    <avalonedit:TextEditor x:Name="Editor" Grid.Column="0"
-                                           FontFamily="Cascadia Mono, Consolas"
-                                           FontSize="14"
-                                           ShowLineNumbers="True"
-                                           Background="{DynamicResource EditorBackground}"
-                                           Foreground="{DynamicResource Foreground}"
-                                           LineNumbersForeground="{DynamicResource MutedForeground}"
-                                           HorizontalScrollBarVisibility="Auto"
-                                           VerticalScrollBarVisibility="Auto"/>
-                    <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
-                                  Background="{DynamicResource Border}" Visibility="Collapsed"/>
-                    <FlowDocumentScrollViewer x:Name="Preview" Grid.Column="2" Visibility="Collapsed"
-                                              Background="{DynamicResource WindowBackground}"
-                                              Padding="12"
-                                              VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Disabled"/>
-                </Grid>
+
+                <panels:FileBrowser x:Name="Browser" Grid.Row="1"/>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" HorizontalAlignment="Stretch"
+                      ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"/>
+
+        <!-- ── Editor titlebar (top of the middle column): toolbar + path + caption ── -->
+        <Border Grid.Row="0" Grid.Column="3" Height="48" Padding="12,8,8,8" Background="{DynamicResource ChromeBackground}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                MouseLeftButtonDown="DragRegion_MouseLeftButtonDown"
+                MouseMove="DragRegion_MouseMove">
+            <DockPanel>
+                <!-- Window controls (shown when the Pythia sidebar is collapsed) -->
+                <StackPanel x:Name="EditorCaptionButtons" DockPanel.Dock="Right" Orientation="Horizontal" Visibility="Collapsed">
+                    <Button Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="OnMinimize">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE921;" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="EditorMaxRestoreButton" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="OnMaximizeRestore">
+                        <TextBlock x:Name="EditorMaxRestoreGlyph" FontFamily="{StaticResource IconFont}" Text="&#xE922;" FontSize="10"/>
+                    </Button>
+                    <Button Style="{StaticResource CloseButton}" ToolTip="Close" Click="OnClose">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8BB;" FontSize="10"/>
+                    </Button>
+                </StackPanel>
+                <Button x:Name="PreviewButton" DockPanel.Dock="Right" Content="◉ Preview" Style="{StaticResource IconButton}"
+                        ToolTip="Toggle markdown preview" Click="OnTogglePreview" Margin="8,0,0,0" Visibility="Collapsed"/>
+                <TextBlock x:Name="LanguageText" DockPanel.Dock="Right" Foreground="{DynamicResource Accent}"
+                           FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Button Style="{StaticResource RailAction}" ToolTip="Open File (Ctrl+O)" Click="OnOpenFile">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8E5;" FontSize="15"/>
+                    </Button>
+                    <Button Style="{StaticResource RailAction}" ToolTip="Save (Ctrl+S)" Click="OnSave">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE74E;" FontSize="15"/>
+                    </Button>
+                    <Button Style="{StaticResource RailAction}" ToolTip="Save As (Ctrl+Shift+S)" Click="OnSaveAs">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE792;" FontSize="15"/>
+                    </Button>
+                    <Border Width="1" Margin="4,10" Background="{DynamicResource Border}"/>
+                    <Button Style="{StaticResource RailAction}" ToolTip="Settings (Ctrl+,)" Click="OnShowSettings">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE713;" FontSize="15"/>
+                    </Button>
+                </StackPanel>
+                <TextBlock x:Name="FilePathText" Foreground="{DynamicResource MutedForeground}"
+                           FontFamily="Cascadia Mono, Consolas" FontSize="11" Text="no file open"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             </DockPanel>
+        </Border>
 
-            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
-                          Background="{DynamicResource Border}"/>
+        <!-- Editor content -->
+        <DockPanel Grid.Row="1" Grid.Column="3">
+            <!-- Tab strip (below the editor titlebar; hidden until > 1 file open) -->
+            <Border x:Name="TabBar" DockPanel.Dock="Top" Visibility="Collapsed" Background="{DynamicResource ChromeBackground}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource RailAction}" ToolTip="New File (Ctrl+N)"
+                            Click="OnNewFile" Margin="0,0,6,0">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE710;" FontSize="13"/>
+                    </Button>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                        <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
 
-            <panels:PythiaPanel x:Name="Pythia" Grid.Column="4"/>
-        </Grid>
-    </DockPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="EditorColumn" Width="*"/>
+                    <ColumnDefinition x:Name="PreviewSplitterColumn" Width="0"/>
+                    <ColumnDefinition x:Name="PreviewColumn" Width="0"/>
+                </Grid.ColumnDefinitions>
+                <avalonedit:TextEditor x:Name="Editor" Grid.Column="0"
+                                       FontFamily="Cascadia Mono, Consolas"
+                                       FontSize="14"
+                                       ShowLineNumbers="True"
+                                       Background="{DynamicResource EditorBackground}"
+                                       Foreground="{DynamicResource Foreground}"
+                                       LineNumbersForeground="{DynamicResource MutedForeground}"
+                                       HorizontalScrollBarVisibility="Auto"
+                                       VerticalScrollBarVisibility="Auto"/>
+                <editor:RichTextEditor x:Name="RichEditor" Grid.Column="0" Visibility="Collapsed"/>
+                <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
+                              Background="{DynamicResource Border}" Visibility="Collapsed"/>
+                <FlowDocumentScrollViewer x:Name="Preview" Grid.Column="2" Visibility="Collapsed"
+                                          Background="{DynamicResource WindowBackground}"
+                                          Padding="12"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"/>
+            </Grid>
+        </DockPanel>
+
+        <GridSplitter Grid.Row="0" Grid.RowSpan="2" Grid.Column="4" HorizontalAlignment="Stretch"
+                      ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"/>
+
+        <!-- Oracle panel -->
+        <panels:PythiaPanel x:Name="Pythia" Grid.Row="0" Grid.RowSpan="2" Grid.Column="5"/>
+    </Grid>
 </Window>

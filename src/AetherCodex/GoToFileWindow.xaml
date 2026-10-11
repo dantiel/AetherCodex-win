@@ -5,8 +5,18 @@
         WindowStyle="ToolWindow" ResizeMode="CanResize" ShowInTaskbar="False"
         Background="{DynamicResource PanelBackground}" Foreground="{DynamicResource Foreground}">
     <DockPanel Margin="10">
-        <TextBox x:Name="Query" DockPanel.Dock="Top" Padding="6,4" FontSize="14"
-                 PreviewKeyDown="OnQueryKeyDown" TextChanged="OnQueryChanged"/>
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4">
+            <Grid>
+                <TextBox x:Name="Query" Padding="6,4" FontSize="14" BorderThickness="0" Background="Transparent"
+                         PreviewKeyDown="OnQueryKeyDown" TextChanged="OnQueryChanged"/>
+                <TextBlock x:Name="Hint" Text="Search project files…" Margin="7,0,0,0"
+                           Foreground="{DynamicResource MutedForeground}" VerticalAlignment="Center"
+                           IsHitTestVisible="False"/>
+            </Grid>
+        </Border>
+        <TextBlock x:Name="ScopeText" DockPanel.Dock="Bottom" FontSize="10"
+                   Foreground="{DynamicResource MutedForeground}" Margin="2,6,2,0"
+                   TextTrimming="CharacterEllipsis"/>
         <ListBox x:Name="Results" Margin="0,8,0,0" BorderThickness="0" Background="Transparent"
                  MouseDoubleClick="OnResultDoubleClick"
                  HorizontalContentAlignment="Stretch">

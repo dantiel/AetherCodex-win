@@ -34,6 +34,11 @@ public sealed class RubyBridge : IDisposable
     private readonly Dictionary<int, TaskCompletionSource<RubyBridgeResponse>> _pending = new();
     private TaskCompletionSource<bool>? _startupTcs;
 
+    // Monotonic "daemon is alive" clock, bumped by every inbound frame. SendAsync
+    // reads it as an *inactivity* timeout (not a total-turn deadline) so a long
+    // multi-tool turn that keeps streaming progress never trips it.
+    private long _lastActivityTicks = DateTime.UtcNow.Ticks;
+
     private readonly StringBuilder _readerBuffer = new();
     private readonly StringBuilder _errorBuffer = new();
     private readonly List<string> _daemonLog = new();
@@ -199,6 +204,9 @@ public sealed class RubyBridge : IDisposable
         catch (ObjectDisposedException) { }
     }
 
+    private void TouchActivity() =>
+        Interlocked.Exchange(ref _lastActivityTicks, DateTime.UtcNow.Ticks);
+
     private void HandleLine(string line)
     {
         var trimmed = line.Trim();
@@ -207,6 +215,8 @@ public sealed class RubyBridge : IDisposable
         try { json = JsonNode.Parse(trimmed) as JsonObject; }
         catch (JsonException) { return; }
         if (json is null) return;
+
+        TouchActivity();
 
         var type = json["type"]?.GetValue<string>();
         switch (type)
@@ -321,15 +331,29 @@ public sealed class RubyBridge : IDisposable
         };
         WriteFrame(frame);
 
-        var timeout = Task.Delay(TimeSpan.FromSeconds(RequestTimeoutSeconds));
-        var winner = await Task.WhenAny(tcs.Task, timeout);
-        if (winner == timeout)
+        // Inactivity timeout: a long turn that keeps streaming progress (tool
+        // start/complete, thinking, …) must not be cut off mid-flight. Only when
+        // the daemon falls silent for RequestTimeoutSeconds do we give up.
+        var deadline = TimeSpan.FromSeconds(RequestTimeoutSeconds);
+        const int pollMs = 5_000;
+        while (true)
         {
-            lock (_pendingLock) _pending.Remove(requestId);
-            SendInterrupt();
-            throw new TimeoutException($"Ruby daemon request '{command}' timed out.");
+            var idle = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastActivityTicks));
+            var remaining = deadline - idle;
+            if (remaining <= TimeSpan.Zero)
+            {
+                lock (_pendingLock) _pending.Remove(requestId);
+                SendInterrupt();
+                throw new TimeoutException($"Ruby daemon request '{command}' timed out after {RequestTimeoutSeconds:0}s of inactivity.");
+            }
+            var wait = remaining < TimeSpan.FromMilliseconds(pollMs)
+                ? remaining
+                : TimeSpan.FromMilliseconds(pollMs);
+            var winner = await Task.WhenAny(tcs.Task, Task.Delay(wait));
+            if (winner == tcs.Task)
+                return await tcs.Task;
+            // No result yet — loop and re-evaluate against fresh activity.
         }
-        return await tcs.Task;
     }
 
     // ── High-level commands (mirrors RubyBridge.swift) ─────────────────────
@@ -423,6 +447,20 @@ public sealed class RubyBridge : IDisposable
         var response = await SendAsync("interrupt", new JsonObject());
         ThrowIfError(response);
         return response.ResultDict;
+    }
+
+    /// <summary>Answers a pending `ask_user` confirmation (blocked command / destructive
+    /// op). `user_response` is a control command, so it is routed inline on the daemon's
+    /// reader thread and unblocks the worker's <c>await_user_response</c> immediately.</summary>
+    public async Task<JsonObject?> UserResponseAsync(string uuid, string response)
+    {
+        var r = await SendAsync("user_response", new JsonObject
+        {
+            ["uuid"] = uuid,
+            ["response"] = response,
+        });
+        ThrowIfError(r);
+        return r.ResultDict;
     }
 
     public async Task<JsonObject?> CliAsync(string command, int timeout = 30)

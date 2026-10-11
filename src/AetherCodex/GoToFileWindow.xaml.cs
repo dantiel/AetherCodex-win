@@ -13,17 +13,20 @@ public partial class GoToFileWindow : Window
     private readonly string _root;
     private List<(string Path, string Glyph)> _all = new();
 
-    public GoToFileWindow(string? currentFile)
+    public GoToFileWindow(string projectRoot, string? currentFile)
     {
         InitializeComponent();
-        _root = ResolveRoot(currentFile);
+        _root = ResolveRoot(projectRoot, currentFile);
+        ScopeText.Text = _root;
+        Hint.Visibility = Visibility.Visible;
         Loaded += (_, _) => { Query.Focus(); };
         Scan();
         RefreshResults();
     }
 
-    private static string ResolveRoot(string? currentFile)
+    private static string ResolveRoot(string projectRoot, string? currentFile)
     {
+        if (Directory.Exists(projectRoot)) return projectRoot;
         if (!string.IsNullOrEmpty(currentFile))
             return Path.GetDirectoryName(currentFile) ?? Directory.GetCurrentDirectory();
         return Directory.GetCurrentDirectory();
@@ -49,7 +52,7 @@ public partial class GoToFileWindow : Window
         var stack = new Stack<string>();
         stack.Push(root);
         var skip = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { ".git", ".vendor_bundle", ".bundle", "node_modules", "bin", "obj", ".vs", "vendored" };
+        { ".git", ".aether", ".vendor_bundle", ".bundle", "node_modules", "bin", "obj", ".vs", "vendored" };
         while (stack.Count > 0)
         {
             var dir = stack.Pop();
@@ -103,7 +106,11 @@ public partial class GoToFileWindow : Window
         if (Results.Items.Count > 0) Results.SelectedIndex = 0;
     }
 
-    private void OnQueryChanged(object sender, TextChangedEventArgs e) => RefreshResults();
+    private void OnQueryChanged(object sender, TextChangedEventArgs e)
+    {
+        Hint.Visibility = Query.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RefreshResults();
+    }
 
     private void OnQueryKeyDown(object sender, KeyEventArgs e)
     {

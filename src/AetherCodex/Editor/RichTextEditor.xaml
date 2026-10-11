@@ -1,0 +1,76 @@
+<UserControl x:Class="AetherCodex.Editor.RichTextEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="{DynamicResource ChromeBackground}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+            <WrapPanel x:Name="FormatBar" Margin="8,5">
+                <Button Content="↶" ToolTip="Undo (Ctrl+Z)" Style="{StaticResource IconButton}" Click="OnUndo"/>
+                <Button Content="↷" ToolTip="Redo (Ctrl+Y)" Style="{StaticResource IconButton}" Click="OnRedo"/>
+                <Border Width="1" Margin="6,3" Background="{DynamicResource Border}"/>
+
+                <ToggleButton x:Name="BoldBtn" Content="B" FontWeight="Bold" ToolTip="Bold (Ctrl+B)" Style="{StaticResource ToolButton}" Click="OnToggleBold"/>
+                <ToggleButton x:Name="ItalicBtn" Content="I" FontStyle="Italic" ToolTip="Italic (Ctrl+I)" Style="{StaticResource ToolButton}" Click="OnToggleItalic"/>
+                <ToggleButton x:Name="UnderlineBtn" ToolTip="Underline (Ctrl+U)" Style="{StaticResource ToolButton}" Click="OnToggleUnderline">
+                    <TextBlock Text="U" TextDecorations="Underline"/>
+                </ToggleButton>
+                <ToggleButton x:Name="StrikeBtn" ToolTip="Strikethrough" Style="{StaticResource ToolButton}" Click="OnToggleStrike">
+                    <TextBlock Text="S" TextDecorations="Strikethrough"/>
+                </ToggleButton>
+                <ToggleButton x:Name="SubBtn" Content="x₂" ToolTip="Subscript" Style="{StaticResource ToolButton}" Click="OnToggleSub"/>
+                <ToggleButton x:Name="SuperBtn" Content="x²" ToolTip="Superscript" Style="{StaticResource ToolButton}" Click="OnToggleSuper"/>
+                <Border Width="1" Margin="6,3" Background="{DynamicResource Border}"/>
+
+                <ComboBox x:Name="FontBox" Width="150" IsEditable="True" ToolTip="Font family"
+                          SelectionChanged="OnFontChanged" KeyDown="OnFontBoxKeyDown"/>
+                <ComboBox x:Name="SizeBox" Width="64" IsEditable="True" ToolTip="Font size"
+                          SelectionChanged="OnSizeChanged" KeyDown="OnSizeBoxKeyDown"/>
+                <ComboBox x:Name="ColorBox" Width="92" ToolTip="Text color" SelectionChanged="OnTextColorChanged"/>
+                <ComboBox x:Name="HighlightBox" Width="92" ToolTip="Highlight color" SelectionChanged="OnHighlightChanged"/>
+                <Border Width="1" Margin="6,3" Background="{DynamicResource Border}"/>
+
+                <ToggleButton x:Name="AlignLeftBtn" Content="L" ToolTip="Align left" Style="{StaticResource ToolButton}" Click="OnAlignLeft"/>
+                <ToggleButton x:Name="AlignCenterBtn" Content="C" ToolTip="Align center" Style="{StaticResource ToolButton}" Click="OnAlignCenter"/>
+                <ToggleButton x:Name="AlignRightBtn" Content="R" ToolTip="Align right" Style="{StaticResource ToolButton}" Click="OnAlignRight"/>
+                <ToggleButton x:Name="AlignJustifyBtn" Content="J" ToolTip="Justify" Style="{StaticResource ToolButton}" Click="OnAlignJustify"/>
+                <Border Width="1" Margin="6,3" Background="{DynamicResource Border}"/>
+
+                <ToggleButton x:Name="BulletsBtn" Content="•" ToolTip="Bulleted list" Style="{StaticResource ToolButton}" Click="OnToggleBullets"/>
+                <ToggleButton x:Name="NumberingBtn" Content="1." ToolTip="Numbered list" Style="{StaticResource ToolButton}" Click="OnToggleNumbering"/>
+                <Button Content="←" ToolTip="Decrease indent" Style="{StaticResource IconButton}" Click="OnOutdent"/>
+                <Button Content="→" ToolTip="Increase indent" Style="{StaticResource IconButton}" Click="OnIndent"/>
+                <Border Width="1" Margin="6,3" Background="{DynamicResource Border}"/>
+
+                <Button Content="Img" ToolTip="Insert image" Style="{StaticResource IconButton}" Click="OnInsertImage"/>
+                <Button Content="Clear" ToolTip="Clear formatting" Style="{StaticResource IconButton}" Click="OnClearFormatting"/>
+
+                <Border Width="1" Margin="6,3" Background="{DynamicResource Border}"/>
+                <ToggleButton x:Name="SourceBtn" Content="Source" ToolTip="Toggle markdown source view"
+                              Style="{StaticResource ToolButton}" Click="OnToggleSource" Visibility="Collapsed"/>
+            </WrapPanel>
+        </Border>
+
+        <RichTextBox x:Name="RichText"
+                     AcceptsTab="True"
+                     Background="{DynamicResource EditorBackground}"
+                     Foreground="{DynamicResource Foreground}"
+                     CaretBrush="{DynamicResource AccentBright}"
+                     Padding="16,14"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Disabled"
+                     FontSize="14"/>
+
+        <TextBox x:Name="SourceBox"
+                 AcceptsReturn="True" AcceptsTab="True"
+                 Background="{DynamicResource EditorBackground}"
+                 Foreground="{DynamicResource Foreground}"
+                 CaretBrush="{DynamicResource AccentBright}"
+                 FontFamily="Cascadia Mono, Consolas"
+                 FontSize="13"
+                 Padding="16,14"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Disabled"
+                 TextWrapping="NoWrap"
+                 Visibility="Collapsed"/>
+    </DockPanel>
+</UserControl>
