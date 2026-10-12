@@ -243,12 +243,17 @@ public partial class MainWindow : Window
         o.HighlightCurrentLine = _settings.HighlightCurrentLine;
     }
 
-    private void OnShowSettings(object sender, RoutedEventArgs e)
+    private async void OnShowSettings(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsWindow(_settings, _themes.Select(t => t.Name).ToList()) { Owner = this };
         if (dialog.ShowDialog() != true) return;
 
         bool themeChanged = !string.Equals(_settings.Theme, dialog.SelectedTheme, StringComparison.OrdinalIgnoreCase);
+        bool oracleChanged =
+            !string.Equals(_settings.OracleProvider, dialog.OracleProviderKey, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(_settings.OracleModel, dialog.OracleModelValue, StringComparison.Ordinal) ||
+            !string.Equals(_settings.OracleApiKey, dialog.OracleApiKeyValue, StringComparison.Ordinal) ||
+            !string.Equals(_settings.OracleApiUrl, dialog.OracleApiUrlValue, StringComparison.Ordinal);
 
         _settings.Theme = dialog.SelectedTheme;
         _settings.FontSize = dialog.FontSizeValue;
@@ -263,6 +268,13 @@ public partial class MainWindow : Window
         _settings.WindowTitle = dialog.WindowTitleValue;
         _settings.RailSymbol = dialog.RailSymbolValue;
 
+        _settings.OracleProvider = dialog.OracleProviderKey;
+        _settings.OracleModel = dialog.OracleModelValue;
+        _settings.OracleApiKey = dialog.OracleApiKeyValue;
+        _settings.OracleApiUrl = dialog.OracleApiUrlValue;
+        _settings.OracleApiType = dialog.OracleApiTypeValue;
+        _settings.OracleFastModel = dialog.OracleFastModelValue;
+
         if (themeChanged)
         {
             _theme = _themes.FirstOrDefault(t => t.Name.Equals(_settings.Theme, StringComparison.OrdinalIgnoreCase)) ?? _theme;
@@ -274,6 +286,33 @@ public partial class MainWindow : Window
         UpdateWindowTitle();
         RailSymbolText.Text = _settings.RailSymbol;
         _settings.Save();
+
+        // Hand the credentials to the Ruby daemon via the highest-priority config
+        // channel (AETHER_* env vars). Restart only if credentials actually changed
+        // and a daemon is already live — otherwise the next start picks them up.
+        ApplyOracleEnvironment();
+        if (oracleChanged && _bridge.IsRunning)
+        {
+            try { await _bridge.RestartAsync(); }
+            catch { /* non-fatal: credentials still apply on the next daemon start */ }
+        }
+    }
+
+    private void ApplyOracleEnvironment()
+    {
+        SetOracleEnv("AETHER_MODEL", _settings.OracleModel);
+        SetOracleEnv("AETHER_FAST_MODEL", _settings.OracleFastModel);
+        SetOracleEnv("AETHER_API_TYPE", _settings.OracleApiType);
+        SetOracleEnv("AETHER_API_URL", _settings.OracleApiUrl);
+        SetOracleEnv("AETHER_API_KEY", _settings.OracleApiKey);
+    }
+
+    private static void SetOracleEnv(string name, string value)
+    {
+        Environment.SetEnvironmentVariable(
+            name,
+            string.IsNullOrWhiteSpace(value) ? null : value,
+            EnvironmentVariableTarget.Process);
     }
 
     private async Task StartDaemonSafeAsync()

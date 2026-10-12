@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using AetherCodex.Models;
 
 namespace AetherCodex;
 
@@ -18,6 +20,9 @@ public partial class SettingsWindow : Window
     private static readonly string[] Symbols =
         { "✦", "✧", "✶", "Æ", "☿", "☉", "☽", "⚚" };
 
+    private string _apiKey = "";
+    private bool _loading = true;
+
     public string SelectedTheme => ThemeBox.Text;
     public string WindowTitleValue => WindowTitleBox.Text.Trim();
     public double FontSizeValue => double.TryParse(FontSizeBox.Text, out var v) ? v : 14.0;
@@ -30,6 +35,16 @@ public partial class SettingsWindow : Window
     public bool HighlightCurrentLine => HighlightLineCheck.IsChecked == true;
     public bool AutoStartDaemon => AutoDaemonCheck.IsChecked == true;
     public string RailSymbolValue => SymbolBox.SelectedItem as string ?? "✦";
+
+    public string OracleProviderKey => (OracleProviderBox.SelectedItem as OracleProvider)?.Key ?? "";
+    public string OracleModelValue => OracleModelBox.Text.Trim();
+    public string OracleApiKeyValue => _apiKey;
+    public string OracleApiUrlValue => OracleUrlBox.Text.Trim();
+
+    private OracleModel? SelectedModel => OracleProviders.FindModel(OracleModelBox.Text.Trim());
+
+    public string OracleApiTypeValue => SelectedModel?.ApiType ?? "";
+    public string OracleFastModelValue => SelectedModel?.FastModel ?? OracleModelBox.Text.Trim();
 
     public SettingsWindow(Models.AppSettings current, IReadOnlyList<string> themeNames)
     {
@@ -59,6 +74,80 @@ public partial class SettingsWindow : Window
 
         SymbolBox.ItemsSource = Symbols;
         SymbolBox.SelectedItem = Symbols.FirstOrDefault(s => s == current.RailSymbol) ?? "✦";
+
+        // Oracle section.
+        OracleProviderBox.ItemsSource = OracleProviders.All;
+        var provider = OracleProviders.FindProvider(current.OracleProvider)
+                       ?? OracleProviders.All.First(p =>
+                           p.Key.Equals(OracleProviders.ProviderKeyForModel(current.OracleModel), StringComparison.OrdinalIgnoreCase));
+        OracleProviderBox.SelectedItem = provider;
+        PopulateModels(provider);
+
+        if (!string.IsNullOrWhiteSpace(current.OracleModel))
+            OracleModelBox.Text = current.OracleModel;
+
+        _apiKey = current.OracleApiKey ?? "";
+        OracleKeyPassword.Password = _apiKey;
+        OracleKeyPlain.Text = _apiKey;
+
+        OracleUrlBox.Text = current.OracleApiUrl ?? "";
+
+        _loading = false;
+    }
+
+    private void PopulateModels(OracleProvider provider)
+    {
+        OracleModelBox.ItemsSource = provider.Models;
+        if (provider.Models.Count > 0)
+            OracleModelBox.SelectedItem = provider.Models[0];
+    }
+
+    private void OnOracleProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        if (OracleProviderBox.SelectedItem is not OracleProvider provider) return;
+
+        PopulateModels(provider);
+        if (provider.Models.Count > 0 && SelectedModel is { } m)
+            OracleUrlBox.Text = m.ApiUrl;
+    }
+
+    private void OnOracleModelChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        if (SelectedModel is { } m)
+            OracleUrlBox.Text = m.ApiUrl;
+    }
+
+    private void OnOracleKeyPasswordChanged(object sender, RoutedEventArgs e)
+    {
+        _apiKey = OracleKeyPassword.Password;
+        OracleKeyPlain.Text = _apiKey;
+    }
+
+    private void OnOracleKeyPlainChanged(object sender, TextChangedEventArgs e)
+    {
+        _apiKey = OracleKeyPlain.Text;
+        OracleKeyPassword.Password = _apiKey;
+    }
+
+    private void OnShowKeyChanged(object sender, RoutedEventArgs e)
+    {
+        bool show = ShowKeyCheck.IsChecked == true;
+        if (show)
+        {
+            OracleKeyPlain.Text = OracleKeyPassword.Password;
+            OracleKeyPlain.Visibility = Visibility.Visible;
+            OracleKeyPassword.Visibility = Visibility.Collapsed;
+            OracleKeyPlain.Focus();
+            OracleKeyPlain.CaretIndex = OracleKeyPlain.Text.Length;
+        }
+        else
+        {
+            OracleKeyPassword.Password = OracleKeyPlain.Text;
+            OracleKeyPassword.Visibility = Visibility.Visible;
+            OracleKeyPlain.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void OnOk(object sender, RoutedEventArgs e)

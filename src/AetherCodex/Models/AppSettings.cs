@@ -19,6 +19,16 @@ public sealed class AppSettings
     public bool AutoStartDaemon { get; set; } = false;
     public string LastDirectory { get; set; } = "";
 
+    // Oracle / AI provider credentials. Persisted in settings.json; handed to the
+    // Ruby daemon as AETHER_* environment variables (the highest-priority channel
+    // in AetherOracle's CONFIG hierarchy) so the soul picks them up on launch.
+    public string OracleProvider { get; set; } = "";
+    public string OracleModel { get; set; } = "";
+    public string OracleApiKey { get; set; } = "";
+    public string OracleApiUrl { get; set; } = "";
+    public string OracleApiType { get; set; } = "";
+    public string OracleFastModel { get; set; } = "";
+
     private static string SettingsPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
