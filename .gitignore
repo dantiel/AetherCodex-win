@@ -12,10 +12,8 @@ mnemosyne.db
 *.db-wal
 *.db-shm
 
-# Vendored Ruby gems — regenerate with `bundle install` (see Ruby/Gemfile).
-Ruby/.vendor_bundle/
-Ruby/.bundle/
-Ruby/vendored/
+# Vendored Ruby gems live inside the AetherOracle submodule (Ruby/ruby/.vendor_bundle),
+# ignored by that repo's own .gitignore. Nothing to ignore here.
 
 # Transient build/daemon artifacts (regenerated on every run).
 build_out.txt

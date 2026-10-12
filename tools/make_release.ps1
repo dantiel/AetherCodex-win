@@ -45,7 +45,9 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot   # tools/ -> repo root
 $Csproj   = Join-Path $RepoRoot "src\AetherCodex\AetherCodex.csproj"
-$RubyDir  = Join-Path $RepoRoot "Ruby"
+# The soul is pinned as the AetherOracle submodule; the daemon + its gems live
+# in the submodule's ruby/ subdirectory.
+$RubyDir  = Join-Path $RepoRoot "Ruby\ruby"
 $DistDir  = Join-Path $RepoRoot "dist"
 
 function Die([string]$msg) { Write-Host "`n[make_release] ERROR: $msg" -ForegroundColor Red; exit 1 }
@@ -68,6 +70,15 @@ $HashPath   = "$ZipPath.sha256"
 
 Step "Release $Version  (config=$Configuration, runtime=$Runtime, self-contained=$SelfContained)"
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
+
+# ---- Soul submodule (AetherOracle is pinned, never copied) -----------------
+Step "Initializing the AetherOracle submodule"
+Push-Location $RepoRoot
+try {
+    & git submodule update --init --recursive | Out-Host
+    if ($LASTEXITCODE -ne 0) { Die "git submodule update failed." }
+}
+finally { Pop-Location }
 
 # ---- Ruby daemon gems (the soul must ship its deps) ------------------------
 $VendorBundle = Join-Path $RubyDir ".vendor_bundle"

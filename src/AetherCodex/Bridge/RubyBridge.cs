@@ -83,7 +83,7 @@ public sealed class RubyBridge : IDisposable
     }
 
     private string DaemonScript =>
-        Path.Combine(AppContext.BaseDirectory, "Ruby", "standalone_daemon.rb");
+        Path.Combine(AppContext.BaseDirectory, "Ruby", "ruby", "standalone_daemon.rb");
 
     /// <summary>Project root passed to the daemon (resolves .aethercodex + data dirs).</summary>
     public string ProjectRoot =>

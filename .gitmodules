@@ -1,0 +1,3 @@
+[submodule "Ruby"]
+	path = Ruby
+	url = https://github.com/dantiel/AetherOracle.git

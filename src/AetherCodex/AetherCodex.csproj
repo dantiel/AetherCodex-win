@@ -24,8 +24,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Ruby daemon: the soul. Copied verbatim; shipped alongside the executable. -->
-    <None Include="..\..\Ruby\**\*" Link="Ruby\%(RecursiveDir)%(Filename)%(Extension)"
+    <!-- Ruby daemon: the soul, pinned as the AetherOracle git submodule (Ruby/).
+         The daemon lives in the submodule's ruby/ subdirectory; the bundled
+         resources/ (themes + grammars) sit alongside it because the daemon
+         resolves ../../resources/Themes relative to ruby/oracle/theme.rb. -->
+    <None Include="..\..\Ruby\ruby\**\*" Link="Ruby\ruby\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Ruby\resources\**\*" Link="Ruby\resources\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />
     <!-- Syntax grammars + queries + themes. -->
     <None Include="..\..\Resources\**\*" Link="Resources\%(RecursiveDir)%(Filename)%(Extension)"
