@@ -132,7 +132,10 @@ public sealed class GutterMargin : AbstractMargin
             if (visualLine.FirstDocumentLine is null) continue;
 
             int lineNumber = visualLine.FirstDocumentLine.LineNumber;
-            double y = visualLine.VisualTop;
+            // VisualTop is document-relative; subtract the scroll offset to land
+            // the number on-screen, otherwise the gutter stays pinned while the
+            // text scrolls underneath it.
+            double y = visualLine.VisualTop - textView.VerticalOffset;
             double h = visualLine.Height;
 
             bool isCurrent = highlightCurrentLine && lineNumber == caretLine;
