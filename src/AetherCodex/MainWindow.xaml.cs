@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private bool _suppressDirty;
     private bool _syncingLanguage;
     private RegexHighlighter? _highlighter;
+    private GutterMargin? _gutter;
     private bool _sidebarOpen = true;
     private bool _pythiaOpen = true;
     private readonly MenuItem _themeMenu = new() { Header = "Theme" };
@@ -207,12 +208,14 @@ public partial class MainWindow : Window
 
         Editor.Background = bg;
         Editor.Foreground = fg;
-        Editor.LineNumbersForeground = new SolidColorBrush(ui.MutedForeground);
+        Editor.TextArea.SelectionBrush = new SolidColorBrush(theme.Selection);
+        Editor.TextArea.SelectionForeground = new SolidColorBrush(theme.Foreground);
         Editor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(theme.PythiaAccent);
 
         Pythia.ApplyTheme(theme);
         RichEditor.ApplyTheme(theme);
         ReattachHighlighter();
+        ApplyWindowOpacity();
     }
 
     private void ReattachHighlighter()
@@ -237,7 +240,6 @@ public partial class MainWindow : Window
     {
         Editor.FontSize = _settings.FontSize;
         Editor.FontFamily = new FontFamily(_settings.FontFamily);
-        Editor.ShowLineNumbers = _settings.ShowLineNumbers;
         Editor.WordWrap = _settings.WordWrap;
         Editor.HorizontalScrollBarVisibility = _settings.WordWrap
             ? ScrollBarVisibility.Disabled
@@ -250,11 +252,41 @@ public partial class MainWindow : Window
         o.ShowTabs = _settings.ShowWhitespace;
         o.ShowEndOfLine = _settings.ShowWhitespace;
         o.HighlightCurrentLine = _settings.HighlightCurrentLine;
+
+        SyncGutter();
+    }
+
+    private void SyncGutter()
+    {
+        if (_settings.ShowLineNumbers)
+        {
+            _gutter ??= new GutterMargin(Editor.TextArea);
+            if (!Editor.TextArea.LeftMargins.Contains(_gutter))
+                Editor.TextArea.LeftMargins.Insert(0, _gutter);
+
+            var ui = ThemePalette.Build(_theme);
+            _gutter.Configure(
+                Editor.FontFamily,
+                Editor.FontSize,
+                new SolidColorBrush(ui.MutedForeground),
+                new SolidColorBrush(_theme.LineHighlight),
+                new SolidColorBrush(_theme.Selection));
+        }
+        else if (_gutter is not null)
+        {
+            Editor.TextArea.LeftMargins.Remove(_gutter);
+        }
+    }
+
+    private void ApplyWindowOpacity()
+    {
+        var target = _settings.UseThemeOpacity ? _theme.WindowOpacity : _settings.WindowOpacity;
+        Opacity = Math.Clamp(target, 0.15, 1.0);
     }
 
     private async void OnShowSettings(object sender, RoutedEventArgs e)
     {
-        var dialog = new SettingsWindow(_settings, _themes.Select(t => t.Name).ToList()) { Owner = this };
+        var dialog = new SettingsWindow(_settings, _themes.Select(t => t.Name).ToList(), _theme.WindowOpacity) { Owner = this };
         if (dialog.ShowDialog() != true) return;
 
         bool themeChanged = !string.Equals(_settings.Theme, dialog.SelectedTheme, StringComparison.OrdinalIgnoreCase);
@@ -278,6 +310,8 @@ public partial class MainWindow : Window
         _settings.AutoStartDaemon = dialog.AutoStartDaemon;
         _settings.WindowTitle = dialog.WindowTitleValue;
         _settings.RailSymbol = dialog.RailSymbolValue;
+        _settings.UseThemeOpacity = dialog.UseThemeOpacity;
+        _settings.WindowOpacity = dialog.WindowOpacityValue;
 
         _settings.OracleProvider = dialog.OracleProviderKey;
         _settings.OracleModel = dialog.OracleModelValue;
@@ -295,6 +329,7 @@ public partial class MainWindow : Window
 
         ApplyEditorSettings();
         ApplyFontSettings();
+        ApplyWindowOpacity();
         // Re-render markdown surfaces with the new prose font + size.
         Pythia.ApplyTheme(_theme);
         UpdateWindowTitle();

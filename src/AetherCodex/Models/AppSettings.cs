@@ -14,6 +14,12 @@ public sealed class AppSettings
     /// Defaults to Syne — the bundled display face, registered at startup.</summary>
     public string UiFontFamily { get; set; } = "Syne";
     public double UiFontSize { get; set; } = 14.0;
+    /// <summary>When true, window transparency follows the active theme's declared
+    /// opacity. When false, <see cref="WindowOpacity"/> wins.</summary>
+    public bool UseThemeOpacity { get; set; } = true;
+    /// <summary>Per-user window opacity override (0.0..1.0). Only applied when
+    /// <see cref="UseThemeOpacity"/> is false.</summary>
+    public double WindowOpacity { get; set; } = 1.0;
     public bool ShowLineNumbers { get; set; } = true;
     public bool WordWrap { get; set; } = false;
     public int TabSize { get; set; } = 4;

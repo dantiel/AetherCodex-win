@@ -101,7 +101,7 @@
                       ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"/>
 
         <!-- ── Editor titlebar (top of the middle column): toolbar + path + caption ── -->
-        <Border Grid.Row="0" Grid.Column="3" Height="48" Padding="12,8,8,8" Background="{DynamicResource ChromeBackground}"
+        <Border Grid.Row="0" Grid.Column="3" Height="48" Padding="12,0,8,0" Background="{DynamicResource ChromeBackground}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
                 MouseLeftButtonDown="DragRegion_MouseLeftButtonDown"
                 MouseMove="DragRegion_MouseMove">
@@ -162,14 +162,12 @@
                     <ColumnDefinition x:Name="PreviewColumn" Width="0"/>
                 </Grid.ColumnDefinitions>
                 <avalonedit:TextEditor x:Name="Editor" Grid.Column="0"
-                                       FontFamily="Cascadia Mono, Consolas"
-                                       FontSize="14"
-                                       ShowLineNumbers="True"
-                                       Background="{DynamicResource EditorBackground}"
-                                       Foreground="{DynamicResource Foreground}"
-                                       LineNumbersForeground="{DynamicResource MutedForeground}"
-                                       HorizontalScrollBarVisibility="Auto"
-                                       VerticalScrollBarVisibility="Auto"/>
+                                        FontFamily="Cascadia Mono, Consolas"
+                                        FontSize="14"
+                                        Background="{DynamicResource EditorBackground}"
+                                        Foreground="{DynamicResource Foreground}"
+                                        HorizontalScrollBarVisibility="Auto"
+                                        VerticalScrollBarVisibility="Auto"/>
                 <editor:RichTextEditor x:Name="RichEditor" Grid.Column="0" Visibility="Collapsed"/>
                 <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
                               Background="{DynamicResource Border}" Visibility="Collapsed"/>

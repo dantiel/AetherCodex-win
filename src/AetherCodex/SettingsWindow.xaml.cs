@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using AetherCodex.Models;
 using AetherCodex.Util;
@@ -17,6 +17,8 @@ public partial class SettingsWindow : Window
 
     private string _apiKey = "";
     private bool _loading = true;
+    private double _themeDefaultOpacity = 1.0;
+    private double _overrideOpacity = 1.0;
 
     public string SelectedTheme => ThemeBox.Text;
     public string WindowTitleValue => WindowTitleBox.Text.Trim();
@@ -33,6 +35,9 @@ public partial class SettingsWindow : Window
     public bool AutoStartDaemon => AutoDaemonCheck.IsChecked == true;
     public string RailSymbolValue => SymbolBox.SelectedItem as string ?? "✦";
 
+    public bool UseThemeOpacity => OpacityUseDefaultCheck.IsChecked == true;
+    public double WindowOpacityValue => Math.Clamp(_overrideOpacity, 0.15, 1.0);
+
     public string OracleProviderKey => (OracleProviderBox.SelectedItem as OracleProvider)?.Key ?? "";
     public string OracleModelValue => OracleModelBox.Text.Trim();
     public string OracleApiKeyValue => _apiKey;
@@ -43,7 +48,7 @@ public partial class SettingsWindow : Window
     public string OracleApiTypeValue => SelectedModel?.ApiType ?? "";
     public string OracleFastModelValue => SelectedModel?.FastModel ?? OracleModelBox.Text.Trim();
 
-    public SettingsWindow(Models.AppSettings current, IReadOnlyList<string> themeNames)
+    public SettingsWindow(Models.AppSettings current, IReadOnlyList<string> themeNames, double themeDefaultOpacity)
     {
         InitializeComponent();
 
@@ -78,6 +83,13 @@ public partial class SettingsWindow : Window
         SymbolBox.ItemsSource = Symbols;
         SymbolBox.SelectedItem = Symbols.FirstOrDefault(s => s == current.RailSymbol) ?? "✦";
 
+        // Transparency: theme default vs per-user override.
+        _themeDefaultOpacity = Math.Clamp(themeDefaultOpacity, 0.15, 1.0);
+        _overrideOpacity = current.WindowOpacity > 0 ? Math.Clamp(current.WindowOpacity, 0.15, 1.0) : _themeDefaultOpacity;
+        OpacityUseDefaultCheck.Content = $"Use theme default ({_themeDefaultOpacity * 100:0}%)";
+        OpacityUseDefaultCheck.IsChecked = current.UseThemeOpacity;
+        SyncOpacityControls(current.UseThemeOpacity);
+
         // Oracle section.
         OracleProviderBox.ItemsSource = OracleProviders.All;
         var provider = OracleProviders.FindProvider(current.OracleProvider)
@@ -96,6 +108,28 @@ public partial class SettingsWindow : Window
         OracleUrlBox.Text = current.OracleApiUrl ?? "";
 
         _loading = false;
+    }
+
+    private void SyncOpacityControls(bool useDefault)
+    {
+        OpacitySlider.IsEnabled = !useDefault;
+        OpacityValueText.IsEnabled = !useDefault;
+        OpacitySlider.Value = (useDefault ? _themeDefaultOpacity : _overrideOpacity) * 100.0;
+        OpacityValueText.Text = $"{(int)Math.Round(OpacitySlider.Value)}%";
+    }
+
+    private void OnUseDefaultOpacityChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        SyncOpacityControls(OpacityUseDefaultCheck.IsChecked == true);
+    }
+
+    private void OnOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_loading) return;
+        if (OpacityUseDefaultCheck.IsChecked != true)
+            _overrideOpacity = Math.Clamp(OpacitySlider.Value / 100.0, 0.15, 1.0);
+        OpacityValueText.Text = $"{(int)Math.Round(OpacitySlider.Value)}%";
     }
 
     private void PopulateModels(OracleProvider provider)

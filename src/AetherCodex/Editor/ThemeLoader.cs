@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows.Media;
 using AetherCodex.Util;
 
@@ -37,6 +38,12 @@ public static class ThemeLoader
 
         string GetString(string key, string fallback = "")
             => root.TryGetValue(key, out var v) && v is string s ? s : fallback;
+
+        double GetDouble(string key, double fallback)
+            => root.TryGetValue(key, out var v)
+               && double.TryParse(v?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
+                ? d
+                : fallback;
 
         Color EditorColor(string key, Color fallback)
             => root.TryGetValue("editor", out var e) && e is Dictionary<string, object?> ed
@@ -95,6 +102,7 @@ public static class ThemeLoader
             RulerForeground = TopColorOrNull("rulerForeground"),
             RulerSeparator = TopColorOrNull("rulerSeparator"),
             Shine = PythiaColorOrNull("shine"),
+            WindowOpacity = Math.Clamp(GetDouble("opacity", GetDouble("windowOpacity", 1.0)), 0.15, 1.0),
             Scopes = scopes,
         };
     }

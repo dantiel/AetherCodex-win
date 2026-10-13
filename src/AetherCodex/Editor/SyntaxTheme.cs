@@ -15,6 +15,9 @@ public sealed class SyntaxTheme
     public Color Caret { get; init; } = Color.FromRgb(0xB4, 0x8C, 0xFF);
     public Color Selection { get; init; } = Color.FromRgb(0x1B, 0x24, 0x33);
     public Color LineHighlight { get; init; } = Color.FromRgb(0x0C, 0x0E, 0x15);
+    /// <summary>Whole-window translucency declared by the theme (0.0..1.0).
+    /// Overridable per-user in the settings dialog.</summary>
+    public double WindowOpacity { get; init; } = 1.0;
 
     public Color PythiaBackground { get; init; } = Color.FromRgb(0x06, 0x07, 0x0D);
     public Color PythiaForeground { get; init; } = Color.FromRgb(0x8E, 0x94, 0xA0);
