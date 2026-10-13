@@ -13,6 +13,7 @@
 <SolidColorBrush x:Key="WindowBackground" Color="#06070D"/>
     <SolidColorBrush x:Key="PanelBackground" Color="#0D0C16"/>
     <SolidColorBrush x:Key="SidebarBackground" Color="#0D0C16"/>
+    <SolidColorBrush x:Key="SidebarForeground" Color="#8E94A0"/>
     <SolidColorBrush x:Key="EditorBackground" Color="#06070D"/>
     <SolidColorBrush x:Key="ChromeBackground" Color="#0C0E15"/>
     <SolidColorBrush x:Key="Foreground" Color="#8E94A0"/>

@@ -293,14 +293,14 @@ public static class MarkdownRenderer
 
         int bodyStart = hasHeader ? 2 : 0;
         if (hasHeader)
-            group.Rows.Add(MakeRow(Pad(all[0], cols), headerStyle, border, baseSize, header: true));
+            group.Rows.Add(MakeRow(Pad(all[0], cols), headerStyle, border, baseSize, header: true, theme));
         for (int i = bodyStart; i < all.Count; i++)
-            group.Rows.Add(MakeRow(Pad(all[i], cols), cellStyle, border, baseSize, header: false));
+            group.Rows.Add(MakeRow(Pad(all[i], cols), cellStyle, border, baseSize, header: false, theme));
 
         doc.Blocks.Add(table);
     }
 
-    private static TableRow MakeRow(string[] cells, ScopeStyle style, Brush border, double size, bool header)
+    private static TableRow MakeRow(string[] cells, ScopeStyle style, Brush border, double size, bool header, SyntaxTheme theme)
     {
         var row = new TableRow();
         foreach (var c in cells)
@@ -311,13 +311,15 @@ public static class MarkdownRenderer
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Padding = new Thickness(8, 5, 8, 5),
             };
-            var p = new Paragraph { Margin = new Thickness(0) };
-            p.Inlines.Add(new Run(c)
+            var p = new Paragraph
             {
+                Margin = new Thickness(0),
                 FontSize = size - 1,
                 FontWeight = header || style.Bold ? FontWeights.SemiBold : FontWeights.Normal,
                 Foreground = new SolidColorBrush(style.Color),
-            });
+            };
+            // Inline markdown (**bold**, `code`, links, etc.) must survive inside cells.
+            AddInlineMarkdown(p.Inlines, c, theme, style.Color, style.Color);
             cell.Blocks.Add(p);
             row.Cells.Add(cell);
         }

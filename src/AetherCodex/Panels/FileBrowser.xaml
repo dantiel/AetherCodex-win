@@ -14,7 +14,7 @@
             <HierarchicalDataTemplate DataType="{x:Type models:FileItem}" ItemsSource="{Binding Children}">
                 <StackPanel Orientation="Horizontal" Margin="0,1">
                     <TextBlock Width="22" Foreground="{DynamicResource Accent}" Text="{Binding Glyph}"/>
-                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Name}" Foreground="{DynamicResource SidebarForeground}" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
             </HierarchicalDataTemplate>
         </TreeView.ItemTemplate>
