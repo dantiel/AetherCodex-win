@@ -56,6 +56,7 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
                     int len = endIdx >= 0 ? (endIdx + end.Length - from) : (text.Length - from);
                     Colorize(line, from, len, _theme.Resolve("comment", Fallback.Comment));
                     excluded.Add((from, len));
+                    ApplyCommentMarkup(line, text, from, len);
                     break;
                 }
             }
@@ -69,6 +70,7 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
                 if (IsExcluded(m.Index, m.Length, excluded)) continue;
                 Colorize(line, m.Index, m.Length, _theme.Resolve("comment", Fallback.Comment));
                 excluded.Add((m.Index, m.Length));
+                ApplyCommentMarkup(line, text, m.Index, m.Length);
             }
         }
 
@@ -87,6 +89,27 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
         ApplyRegex(line, text, excluded, _language.TypeRegex, "type", Fallback.Type);
         ApplyRegex(line, text, excluded, _language.BuiltinRegex, "support.function", Fallback.Function);
         ApplyRegex(line, text, excluded, _language.FunctionCallRegex, "entity.name.function", Fallback.Function);
+    }
+
+    private void ApplyCommentMarkup(DocumentLine line, string text, int from, int length)
+    {
+        if (length <= 0) return;
+        foreach (var (start, len, kind) in CommentMarkup.Tokenize(text.Substring(from, length)))
+            Colorize(line, from + start, len, ResolveCommentMarkup(kind));
+    }
+
+    private ScopeStyle ResolveCommentMarkup(CommentMarkupKind kind)
+    {
+        var comment = _theme.Resolve("comment", Fallback.Comment);
+        return kind switch
+        {
+            CommentMarkupKind.Todo => _theme.StyleFor("comment.keyword", CommentMarkup.TodoStyle(_theme.IsDark)),
+            CommentMarkupKind.Code => _theme.Resolve("markup.code.inline",
+                new ScopeStyle(_theme.Resolve("string", Fallback.String).Color)),
+            CommentMarkupKind.Bold => _theme.Resolve("markup.bold", new ScopeStyle(comment.Color, Bold: true)),
+            CommentMarkupKind.Italic => _theme.Resolve("markup.italic", new ScopeStyle(comment.Color, Italic: true)),
+            _ => comment,
+        };
     }
 
     private void ApplyRegex(

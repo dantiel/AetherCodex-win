@@ -186,6 +186,17 @@ public static class Languages
         },
         new LanguageDefinition
         {
+            Key = "haskell", Name = "Haskell",
+            Extensions = new[] { ".hs", ".lhs", ".hsc" },
+            LineComments = new[] { "--" },
+            BlockComments = new[] { ("{-", "-}") },
+            Keywords = "module where import qualified as data type newtype class instance deriving if then else case of let in do return forall infix infixl infixr foreign export ccall stdcall unsafe safe default family role pattern mdo rec static".Split(' '),
+            Types = "Int Integer Float Double Bool Char String Maybe Either IO Show Eq Ord Read Enum Bounded Num Real Integral Fractional Floating Monad Functor Applicative Traversable Foldable Semigroup Monoid Map Set Vector Text ByteString Word".Split(' '),
+            Constants = "True False Nothing".Split(' '),
+            Builtins = "map filter foldl foldr head tail init last length reverse concat take drop zip fst snd print putStrLn getLine return fmap pure liftA2 id const error undefined otherwise not elem lookup".Split(' '),
+        },
+        new LanguageDefinition
+        {
             Key = "plain", Name = "Plain Text",
             Extensions = new[] { ".txt" },
         },
@@ -229,6 +240,7 @@ public static class Languages
             "sh" or "bash" or "zsh" => "shell",
             "yml" => "yaml",
             "md" => "markdown",
+            "hs" => "haskell",
             "text" => "plain",
             "html" => "xml",
             _ => norm,

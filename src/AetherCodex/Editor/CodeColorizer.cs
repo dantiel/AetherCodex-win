@@ -61,12 +61,14 @@ public static class CodeColorizer
             int e = text.IndexOf(end, StringComparison.Ordinal);
             if (e < 0)
             {
-                Emit(inlines, text, theme, "comment", mono, size, fallback);
-                return;
+                AddCommentSegment(text, tokens, 0, 0, text.Length, 0, 0);
             }
-            tokens.Add((0, e + end.Length, "comment"));
-            inBlock = false;
-            AddTokens(text[(e + end.Length)..], tokens, lang, ref inBlock, e + end.Length);
+            else
+            {
+                AddCommentSegment(text, tokens, 0, 0, e + end.Length, 0, end.Length);
+                inBlock = false;
+                AddTokens(text[(e + end.Length)..], tokens, lang, ref inBlock, e + end.Length);
+            }
         }
         else
         {
@@ -91,7 +93,11 @@ public static class CodeColorizer
         foreach (var lc in lang.LineComments)
         {
             int i = text.IndexOf(lc, StringComparison.Ordinal);
-            if (i >= 0) { tokens.Add((offset + i, text.Length - i, "comment")); break; }
+            if (i >= 0)
+            {
+                AddCommentSegment(text, tokens, offset, i, text.Length - i, lc.Length, 0);
+                break;
+            }
         }
 
         // Inline block comments.
@@ -102,8 +108,13 @@ public static class CodeColorizer
             if (i >= 0)
             {
                 int e = text.IndexOf(end, i + start.Length, StringComparison.Ordinal);
-                if (e >= 0) tokens.Add((offset + i, e + end.Length - i, "comment"));
-                else { tokens.Add((offset + i, text.Length - i, "comment")); inBlock = true; }
+                if (e >= 0)
+                    AddCommentSegment(text, tokens, offset, i, e + end.Length - i, start.Length, end.Length);
+                else
+                {
+                    AddCommentSegment(text, tokens, offset, i, text.Length - i, start.Length, 0);
+                    inBlock = true;
+                }
             }
         }
 
@@ -137,6 +148,38 @@ public static class CodeColorizer
             if (m.Length > 0) tokens.Add((offset + m.Index, m.Length, scope));
     }
 
+    /// <summary>Emits a comment span as a sequence of segments: the opening/closing
+    /// delimiters and any non-markup prose stay <c>comment</c>-scoped, while TODO
+    /// markers and `code`/**bold**/*italic* decoration get their own scopes.</summary>
+    private static void AddCommentSegment(
+        string text, List<(int, int, string)> tokens, int offset,
+        int start, int length, int openingLen, int closingLen)
+    {
+        if (openingLen > 0)
+            tokens.Add((offset + start, openingLen, "comment"));
+
+        int contentStart = start + openingLen;
+        int contentEnd = start + length - closingLen;
+
+        if (contentEnd > contentStart)
+        {
+            var content = text.Substring(contentStart, contentEnd - contentStart);
+            int pos = 0;
+            foreach (var (s, l, kind) in CommentMarkup.Tokenize(content))
+            {
+                if (s > pos)
+                    tokens.Add((offset + contentStart + pos, s - pos, "comment"));
+                tokens.Add((offset + contentStart + s, l, CommentMarkup.ScopeFor(kind)));
+                pos = s + l;
+            }
+            if (pos < content.Length)
+                tokens.Add((offset + contentStart + pos, content.Length - pos, "comment"));
+        }
+
+        if (closingLen > 0)
+            tokens.Add((offset + contentEnd, closingLen, "comment"));
+    }
+
     private static void Emit(
         InlineCollection inlines, string text, SyntaxTheme theme, string? scope,
         FontFamily mono, double size, Color fallback)
@@ -150,7 +193,7 @@ public static class CodeColorizer
         }
         else
         {
-            var style = theme.Resolve(scope, new ScopeStyle(fallback));
+            var style = ResolveMarkup(theme, scope, fallback);
             run.Foreground = new SolidColorBrush(style.Color);
             if (style.Bold) run.FontWeight = FontWeights.Bold;
             if (style.Italic) run.FontStyle = FontStyles.Italic;
@@ -159,5 +202,14 @@ public static class CodeColorizer
             if (style.Background is Color bg) run.Background = new SolidColorBrush(bg);
         }
         inlines.Add(run);
+    }
+
+    private static ScopeStyle ResolveMarkup(SyntaxTheme theme, string scope, Color fallback)
+    {
+        // TODO markers have no theme scope yet; give them a distinct, legible style
+        // rather than falling back to the (muted) comment colour.
+        if (scope == "comment.keyword")
+            return theme.StyleFor("comment.keyword", CommentMarkup.TodoStyle(theme.IsDark));
+        return theme.Resolve(scope, new ScopeStyle(fallback));
     }
 }

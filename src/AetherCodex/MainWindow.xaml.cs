@@ -935,6 +935,7 @@ public partial class MainWindow : Window
         "xml" => "◇",
         "css" => "◇",
         "shell" => "▷",
+        "haskell" => "λ",
         "markdown" => "✎",
         _ => "·",
     };
