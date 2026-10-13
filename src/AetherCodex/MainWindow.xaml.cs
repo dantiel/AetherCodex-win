@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -63,6 +63,7 @@ public partial class MainWindow : Window
         LoadThemes();
         ApplyTheme(_theme);
         ApplyEditorSettings();
+        ApplyFontSettings();
         UpdateWindowTitle();
         RailSymbolText.Text = _settings.RailSymbol;
         UpdateLanguageCombo();
@@ -224,6 +225,14 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.Redraw();
     }
 
+    private void ApplyFontSettings()
+    {
+        Util.AppFonts.Ui = string.IsNullOrWhiteSpace(_settings.UiFontFamily) ? "Syne" : _settings.UiFontFamily;
+        Util.AppFonts.Mono = string.IsNullOrWhiteSpace(_settings.FontFamily) ? "Cascadia Mono, Consolas" : _settings.FontFamily;
+        Util.AppFonts.UiSize = _settings.UiFontSize > 0 ? _settings.UiFontSize : 14.0;
+        App.ApplyUiFont();
+    }
+
     private void ApplyEditorSettings()
     {
         Editor.FontSize = _settings.FontSize;
@@ -258,6 +267,8 @@ public partial class MainWindow : Window
         _settings.Theme = dialog.SelectedTheme;
         _settings.FontSize = dialog.FontSizeValue;
         _settings.FontFamily = dialog.FontFamilyValue;
+        _settings.UiFontFamily = dialog.UiFontFamilyValue;
+        _settings.UiFontSize = dialog.UiFontSizeValue;
         _settings.ShowLineNumbers = dialog.ShowLineNumbers;
         _settings.WordWrap = dialog.WordWrap;
         _settings.TabSize = dialog.TabSizeValue;
@@ -283,6 +294,9 @@ public partial class MainWindow : Window
         }
 
         ApplyEditorSettings();
+        ApplyFontSettings();
+        // Re-render markdown surfaces with the new prose font + size.
+        Pythia.ApplyTheme(_theme);
         UpdateWindowTitle();
         RailSymbolText.Text = _settings.RailSymbol;
         _settings.Save();
@@ -346,7 +360,7 @@ public partial class MainWindow : Window
                     // themed against the active palette so the editor shows it styled.
                     var markdown = File.ReadAllText(path, DetectEncoding(path));
                     doc.Markdown = markdown;
-                    doc.Rich = MarkdownRenderer.Render(markdown, _theme.Foreground, _theme.PythiaCodeBackground, _theme.PythiaAccent);
+                    doc.Rich = MarkdownRenderer.Render(markdown, _theme);
                     doc.Language = "Markdown";
                 }
                 else
@@ -417,7 +431,7 @@ public partial class MainWindow : Window
             {
                 if (doc.IsMarkdown)
                 {
-                    doc.Rich = MarkdownRenderer.Render(doc.Markdown, _theme.Foreground, _theme.PythiaCodeBackground, _theme.PythiaAccent);
+                    doc.Rich = MarkdownRenderer.Render(doc.Markdown, _theme);
                     RichEditor.LoadMarkdown(doc.Markdown, doc.Rich, _theme);
                 }
                 else
@@ -488,7 +502,7 @@ public partial class MainWindow : Window
     private void RenderPreview()
     {
         if (_language.Key != "markdown") return;
-        Preview.Document = MarkdownRenderer.Render(Editor.Text, _theme.PythiaForeground, _theme.PythiaCodeBackground, _theme.PythiaAccent);
+        Preview.Document = MarkdownRenderer.Render(Editor.Text, _theme);
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
@@ -638,7 +652,7 @@ public partial class MainWindow : Window
                 else
                 {
                     if (doc.IsMarkdown)
-                        doc.Rich = MarkdownRenderer.Render(doc.Markdown, _theme.Foreground, _theme.PythiaCodeBackground, _theme.PythiaAccent);
+                        doc.Rich = MarkdownRenderer.Render(doc.Markdown, _theme);
                     DocumentIO.Save(path, doc.Rich ?? new FlowDocument());
                 }
                 doc.Language = targetMarkdown ? "Markdown" : "Rich Text";

@@ -37,7 +37,8 @@ public sealed class PythiaMessageCard : Border
         {
             Text = PlainPreview(markdown, PreviewChars),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(theme.PythiaForeground),
+            FontFamily = AetherCodex.Util.AppFonts.UiFamily,
+            Foreground = new SolidColorBrush(theme.PythiaBaseText),
             FontSize = 12.5,
             MaxHeight = 58, // ~3 lines
         };
@@ -102,7 +103,7 @@ public sealed class PythiaMessageCard : Border
         _theme = theme;
         _ui = ui;
 
-        _preview.Foreground = new SolidColorBrush(theme.PythiaForeground);
+        _preview.Foreground = new SolidColorBrush(theme.PythiaBaseText);
         _chevron.Foreground = new SolidColorBrush(ui.MutedForeground);
         _label.Foreground = new SolidColorBrush(theme.PythiaAccent);
         Background = new SolidColorBrush(theme.PythiaBackground);
@@ -128,7 +129,7 @@ public sealed class PythiaMessageCard : Border
 
     private static FrameworkElement BuildMarkdown(SyntaxTheme theme, string markdown)
     {
-        var doc = MarkdownRenderer.Render(markdown, theme.PythiaForeground, theme.PythiaCodeBackground, theme.PythiaAccent, 13);
+        var doc = MarkdownRenderer.Render(markdown, theme);
         var rtb = new RichTextBox
         {
             Document = doc,

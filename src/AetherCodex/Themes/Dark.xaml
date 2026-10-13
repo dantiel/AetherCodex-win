@@ -1,11 +1,16 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Icon fonts (Windows 11 Segoe Fluent Icons, falls back to Windows 10 MDL2) -->
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
-    <!-- ── Default ÆtherNight palette (replaced live by ThemePalette.Apply) ── -->
-    <SolidColorBrush x:Key="WindowBackground" Color="#06070D"/>
+    <!-- Proportional (UI + markdown) and monospaced (code) faces. Replaced live by
+         App.ApplyUiFont() from settings; defaults mirror the bundled Syne pairing. -->
+    <FontFamily x:Key="UiFont">Syne</FontFamily>
+    <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
+
+    <!-- Default AetherNight palette (replaced live by ThemePalette.Apply) -->
+<SolidColorBrush x:Key="WindowBackground" Color="#06070D"/>
     <SolidColorBrush x:Key="PanelBackground" Color="#0D0C16"/>
     <SolidColorBrush x:Key="SidebarBackground" Color="#0D0C16"/>
     <SolidColorBrush x:Key="EditorBackground" Color="#06070D"/>
@@ -40,7 +45,7 @@
     <Style TargetType="Window">
         <Setter Property="Background" Value="{DynamicResource WindowBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource Foreground}"/>
-        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}"/>
         <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
     </Style>

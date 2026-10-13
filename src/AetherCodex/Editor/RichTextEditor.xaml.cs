@@ -12,6 +12,7 @@ public partial class RichTextEditor : UserControl
 {
     private static readonly string[] FontNames =
     {
+        "Syne", "Syne Mono",
         "Segoe UI", "Calibri", "Cambria", "Georgia", "Times New Roman", "Arial",
         "Consolas", "Courier New", "Verdana", "Tahoma", "Trebuchet MS",
         "Comic Sans MS", "Garamond", "Palatino Linotype", "Impact"
@@ -115,10 +116,7 @@ public partial class RichTextEditor : UserControl
         {
             // Source → rich: re-render from the raw source.
             var markdown = SourceBox.Text;
-            var fg = _theme?.Foreground ?? Colors.White;
-            var codeBg = _theme?.PythiaCodeBackground ?? Colors.Black;
-            var accent = _theme?.PythiaAccent ?? Colors.SteelBlue;
-            RichText.Document = MarkdownRenderer.Render(markdown, fg, codeBg, accent);
+            RichText.Document = MarkdownRenderer.Render(markdown, _theme ?? new SyntaxTheme());
             SourceBox.Visibility = Visibility.Collapsed;
             RichText.Visibility = Visibility.Visible;
             FormatBar.IsEnabled = true;

@@ -1,6 +1,7 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using AetherCodex.Models;
+using AetherCodex.Util;
 
 namespace AetherCodex;
 
@@ -8,12 +9,6 @@ public partial class SettingsWindow : Window
 {
     private static readonly string[] FontSizes =
         { "10", "11", "12", "13", "14", "15", "16", "18", "20", "22", "24", "28", "32" };
-
-    private static readonly string[] MonoFonts =
-    {
-        "Cascadia Mono", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code",
-        "Source Code Pro", "SF Mono", "Menlo", "DejaVu Sans Mono", "Courier New"
-    };
 
     private static readonly string[] TabSizes = { "2", "4", "8" };
 
@@ -27,6 +22,8 @@ public partial class SettingsWindow : Window
     public string WindowTitleValue => WindowTitleBox.Text.Trim();
     public double FontSizeValue => double.TryParse(FontSizeBox.Text, out var v) ? v : 14.0;
     public string FontFamilyValue => FontFamilyBox.Text.Trim();
+    public string UiFontFamilyValue => UiFontFamilyBox.Text.Trim();
+    public double UiFontSizeValue => double.TryParse(UiFontSizeBox.Text, out var v) ? v : 14.0;
     public bool ShowLineNumbers => LineNumbersCheck.IsChecked == true;
     public bool WordWrap => WordWrapCheck.IsChecked == true;
     public int TabSizeValue => int.TryParse(TabSizeBox.Text, out var v) ? Math.Clamp(v, 1, 16) : 4;
@@ -57,7 +54,13 @@ public partial class SettingsWindow : Window
         FontSizeBox.ItemsSource = FontSizes;
         FontSizeBox.Text = current.FontSize.ToString("0.##");
 
-        FontFamilyBox.ItemsSource = MonoFonts;
+        var families = FontManager.FamilyNames();
+        UiFontFamilyBox.ItemsSource = families;
+        UiFontFamilyBox.Text = string.IsNullOrWhiteSpace(current.UiFontFamily) ? "Syne" : current.UiFontFamily;
+        UiFontSizeBox.ItemsSource = FontSizes;
+        UiFontSizeBox.Text = current.UiFontSize.ToString("0.##");
+
+        FontFamilyBox.ItemsSource = families;
         FontFamilyBox.Text = current.FontFamily;
 
         LineNumbersCheck.IsChecked = current.ShowLineNumbers;

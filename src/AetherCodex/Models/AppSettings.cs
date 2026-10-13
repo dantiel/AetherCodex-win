@@ -10,6 +10,10 @@ public sealed class AppSettings
     public string RailSymbol { get; set; } = "✦";
     public double FontSize { get; set; } = 14.0;
     public string FontFamily { get; set; } = "Cascadia Mono, Consolas";
+    /// <summary>Proportional font for the shell chrome + Pythia markdown prose.
+    /// Defaults to Syne — the bundled display face, registered at startup.</summary>
+    public string UiFontFamily { get; set; } = "Syne";
+    public double UiFontSize { get; set; } = 14.0;
     public bool ShowLineNumbers { get; set; } = true;
     public bool WordWrap { get; set; } = false;
     public int TabSize { get; set; } = 4;

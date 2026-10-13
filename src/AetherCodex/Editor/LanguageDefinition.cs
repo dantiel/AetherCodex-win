@@ -212,4 +212,30 @@ public static class Languages
             return byName;
         return ByExtension[".txt"];
     }
+
+    /// <summary>Resolve a language by its registry key (e.g. "ruby", "csharp"),
+    /// falling back to Plain Text. Used to colourise markdown fenced code blocks.</summary>
+    public static LanguageDefinition FromKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return ByExtension[".txt"];
+        var norm = key.Trim().ToLowerInvariant();
+        // Common aliases for fenced-code info strings.
+        norm = norm switch
+        {
+            "c#" or "cs" => "csharp",
+            "c++" or "cc" => "cpp",
+            "js" or "jsx" => "javascript",
+            "ts" or "tsx" => "typescript",
+            "sh" or "bash" or "zsh" => "shell",
+            "yml" => "yaml",
+            "md" => "markdown",
+            "text" => "plain",
+            "html" => "xml",
+            _ => norm,
+        };
+        foreach (var lang in All)
+            if (lang.Key.Equals(norm, StringComparison.OrdinalIgnoreCase))
+                return lang;
+        return ByExtension[".txt"];
+    }
 }

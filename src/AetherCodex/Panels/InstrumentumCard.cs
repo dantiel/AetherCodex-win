@@ -28,8 +28,8 @@ public sealed class InstrumentumCard : Border
 {
     private const int CompactLineCount = 6;
 
-    private static readonly FontFamily MonoFont = new("Cascadia Mono, Consolas");
-    private static readonly FontFamily ProseFont = new("Segoe UI");
+    private static FontFamily MonoFont => AetherCodex.Util.AppFonts.MonoFamily;
+    private static FontFamily ProseFont => AetherCodex.Util.AppFonts.UiFamily;
 
     private SyntaxTheme _theme;
     private UiColors _ui;

@@ -85,6 +85,7 @@ public static class ThemeLoader
             PythiaForeground = PythiaColor("foreground", foreground),
             PythiaAccent = PythiaColor("accent", Color.FromRgb(0x8C, 0x7A, 0xB8)),
             PythiaComplementary = PythiaColor("complementary", Color.FromRgb(0xB0, 0xA0, 0x6E)),
+            PythiaBaseText = PythiaColor("baseText", PythiaColor("complementary", Color.FromRgb(0xB0, 0xA0, 0x6E))),
             PythiaCodeBackground = PythiaColor("codeBackground", background),
             PythiaCodeForeground = PythiaColor("codeForeground", foreground),
             SidebarBackground = TopColorOrNull("sidebarBackground"),
@@ -106,11 +107,20 @@ public static class ThemeLoader
         if (value is Dictionary<string, object?> map)
         {
             var color = ThemeColor.Parse(map.GetValueOrDefault("color"), fallback);
+            double? fontSize = map.GetValueOrDefault("fontSize") is string fs && double.TryParse(fs, out var fv)
+                ? fv
+                : map.GetValueOrDefault("fontSize") is double fd ? fd : null;
+            Color? background = map.GetValueOrDefault("background") is string bg
+                ? ThemeColor.Parse(bg, default)
+                : null;
             return new ScopeStyle(
                 color,
                 map.GetValueOrDefault("bold") is bool b && b,
                 map.GetValueOrDefault("italic") is bool i && i,
-                map.GetValueOrDefault("underline") is bool u && u);
+                map.GetValueOrDefault("underline") is bool u && u,
+                fontSize,
+                background,
+                map.GetValueOrDefault("strikethrough") is bool st && st);
         }
 
         return new ScopeStyle(fallback);

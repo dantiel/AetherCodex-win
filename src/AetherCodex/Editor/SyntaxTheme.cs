@@ -20,6 +20,10 @@ public sealed class SyntaxTheme
     public Color PythiaForeground { get; init; } = Color.FromRgb(0x8E, 0x94, 0xA0);
     public Color PythiaAccent { get; init; } = Color.FromRgb(0x8C, 0x7A, 0xB8);
     public Color PythiaComplementary { get; init; } = Color.FromRgb(0xB0, 0xA0, 0x6E);
+    /// <summary>The oracle's primary voice — message-body prose. Distinct from
+    /// <see cref="PythiaForeground"/> (muted chrome/secondary). Argonaut declares
+    /// golden amber; other themes derive it from their complementary tone.</summary>
+    public Color PythiaBaseText { get; init; } = Color.FromRgb(0xB0, 0xA0, 0x6E);
     public Color PythiaCodeBackground { get; init; } = Color.FromRgb(0x08, 0x0A, 0x10);
     public Color PythiaCodeForeground { get; init; } = Color.FromRgb(0x8E, 0x94, 0xA0);
 
@@ -57,7 +61,14 @@ public sealed class SyntaxTheme
 }
 
 /// <summary>A scope's visual style (color + optional decorations).</summary>
-public readonly record struct ScopeStyle(Color Color, bool Bold = false, bool Italic = false, bool Underline = false)
+public readonly record struct ScopeStyle(
+    Color Color,
+    bool Bold = false,
+    bool Italic = false,
+    bool Underline = false,
+    double? FontSize = null,
+    Color? Background = null,
+    bool Strikethrough = false)
 {
     public static ScopeStyle FromColor(Color c) => new(c);
 }
