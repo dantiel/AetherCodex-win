@@ -98,4 +98,4 @@ Not yet ported from the macOS app:
 
 MIT — © 2026 darographix. Descends from
 [ÆtherCodex](https://github.com/dantiel/AetherCodex) and the
-[ÆtherCodex TextMate plugin](https://github.com/dantiel/AetherCodex-TextMate).
+[ÆtherCodex TextMate plugin](https://github.com/dantiel/AetherCodex-TextMate). The shared reasoning core — Pythia, Mnemosyne, the companion pantheon — is [AetherOracle](https://github.com/dantiel/AetherOracle).
