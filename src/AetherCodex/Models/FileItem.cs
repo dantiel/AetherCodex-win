@@ -27,7 +27,7 @@ public sealed class FileItem : INotifyPropertyChanged
             ".json" or ".yml" or ".yaml" => "≡",
             ".md" or ".markdown" => "✎",
             ".png" or ".jpg" or ".jpeg" or ".gif" or ".svg" => "◈",
-            ".html" or ".htm" or ".css" or ".scss" => "◇",
+            ".html" or ".htm" or ".css" or ".scss" or ".sass" or ".haml" => "◇",
             _ => "·",
         };
     }
@@ -65,6 +65,10 @@ public sealed class FileItem : INotifyPropertyChanged
 
     private static readonly FileItem Placeholder = new("", false);
 
+    /// <summary>Find an already-loaded direct child by its file/directory name.</summary>
+    public FileItem? FindChild(string name) =>
+        Children.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
     public void LoadChildren()
     {
         if (_loaded) return;
@@ -84,6 +88,14 @@ public sealed class FileItem : INotifyPropertyChanged
             }
         }
         catch { /* skip inaccessible directory */ }
+    }
+
+    /// <summary>Re-read a directory's children (drops the loaded cache and reloads).</summary>
+    public void Reload()
+    {
+        if (!IsDirectory) return;
+        _loaded = false;
+        LoadChildren();
     }
 
     private static bool IsHidden(string path)

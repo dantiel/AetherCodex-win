@@ -32,13 +32,27 @@ public static class ProjectSearch
     private static readonly HashSet<string> IgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
     { ".git", ".aether", ".vendor_bundle", ".bundle", "node_modules", "bin", "obj", ".vs", "vendored" };
 
-    public static IEnumerable<string> EnumerateFiles(string root, IReadOnlyList<string> globs)
+    private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".tiff", ".psd",
+        ".exe", ".dll", ".pdb", ".obj", ".lib", ".so", ".dylib", ".a", ".sys",
+        ".zip", ".gz", ".tar", ".7z", ".rar", ".xz", ".bz2", ".zst",
+        ".mp3", ".mp4", ".wav", ".ogg", ".flac", ".aac", ".avi", ".mkv", ".mov", ".webm",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".ttf", ".otf", ".woff", ".woff2", ".eot",
+        ".sqlite", ".db", ".sqlite3", ".bin", ".dat", ".pak", ".rlib",
+        ".jar", ".war", ".class", ".o", ".pyc", ".pyo", ".nupkg", ".snupkg",
+        ".wasm", ".aotdata", ".resources",
+    };
+
+    public static IEnumerable<string> EnumerateFiles(string root, IReadOnlyList<string> globs, CancellationToken token = default)
     {
         if (!Directory.Exists(root)) yield break;
         var stack = new Stack<string>();
         stack.Push(root);
         while (stack.Count > 0)
         {
+            if (token.IsCancellationRequested) yield break;
             var dir = stack.Pop();
             IEnumerable<string> entries;
             try { entries = Directory.EnumerateFileSystemEntries(dir); }
@@ -59,6 +73,7 @@ public static class ProjectSearch
             catch { continue; }
             foreach (var file in files)
             {
+                if (token.IsCancellationRequested) yield break;
                 var name = Path.GetFileName(file);
                 if (IgnoredDirs.Contains(name)) continue;
                 if (GlobsMatch(file, globs)) yield return file;
@@ -86,8 +101,39 @@ public static class ProjectSearch
         return false;
     }
 
-    public static IEnumerable<SearchMatch> MatchFile(string path, Options options)
+    private const int BinaryProbeBytes = 8192;
+
+    /// <summary>
+    /// Cheap binary sniff: known binary extensions plus a NUL-byte probe over the
+    /// first 8 KiB. Text never carries a NUL in its prefix; UTF-16/UTF-32 BOMs are
+    /// exempted because their zero bytes are structural, not binary.
+    /// </summary>
+    public static bool IsBinaryFile(string path)
     {
+        if (BinaryExtensions.Contains(Path.GetExtension(path))) return true;
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (stream.Length == 0) return false;
+            var probe = new byte[Math.Min((int)stream.Length, BinaryProbeBytes)];
+            int read = stream.Read(probe, 0, probe.Length);
+            if (read >= 2 && ((probe[0] == 0xFF && probe[1] == 0xFE) || (probe[0] == 0xFE && probe[1] == 0xFF)))
+                return false; // UTF-16 LE/BE BOM
+            if (read >= 4 && probe[0] == 0xFF && probe[1] == 0xFE && probe[2] == 0x00 && probe[3] == 0x00)
+                return false; // UTF-32 LE BOM
+            for (int i = 0; i < read; i++)
+                if (probe[i] == 0) return true;
+            return false;
+        }
+        catch
+        {
+            return true; // unreadable → skip
+        }
+    }
+
+    public static IEnumerable<SearchMatch> MatchFile(string path, Options options, CancellationToken token = default)
+    {
+        if (IsBinaryFile(path)) yield break;
         var glyph = GlyphFor(path);
         var query = options.Query;
         int lineNo = 0;
@@ -104,6 +150,7 @@ public static class ProjectSearch
 
             foreach (var line in File.ReadLines(path))
             {
+                if (token.IsCancellationRequested) yield break;
                 lineNo++;
                 if (line.Length == 0) continue;
                 foreach (System.Text.RegularExpressions.Match m in rx.Matches(line))
@@ -118,6 +165,7 @@ public static class ProjectSearch
             var comparison = options.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
             foreach (var line in File.ReadLines(path))
             {
+                if (token.IsCancellationRequested) yield break;
                 lineNo++;
                 if (line.Length == 0) continue;
                 int idx = 0;

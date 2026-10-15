@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <DockPanel Background="{DynamicResource PanelBackground}">
         <!-- Header -->
-        <Border DockPanel.Dock="Top" Height="48" Padding="12,10,8,10" Background="{DynamicResource ChromeBackground}">
+        <Border DockPanel.Dock="Top" Height="48" Padding="12,0,8,0" Background="{DynamicResource ChromeBackground}">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                     <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{DynamicResource MutedForeground}" VerticalAlignment="Center"/>

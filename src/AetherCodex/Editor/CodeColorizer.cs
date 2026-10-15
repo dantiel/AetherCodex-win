@@ -134,6 +134,9 @@ public static class CodeColorizer
             }
         }
 
+        if (lang.TagRegex is { } tagRx) AddRegexTokens(text, tokens, offset, tagRx, "entity.name.tag");
+        if (lang.AttributeRegex is { } attrRx) AddRegexTokens(text, tokens, offset, attrRx, "entity.other.attribute-name");
+
         foreach (Match m in NumberRx.Matches(text)) tokens.Add((offset + m.Index, m.Length, "number"));
         AddRegexTokens(text, tokens, offset, lang.KeywordRegex, "keyword");
         AddRegexTokens(text, tokens, offset, lang.TypeRegex, "type");

@@ -8,6 +8,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Interop;
 using System.Windows.Shell;
+using System.Windows.Threading;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using AetherCodex.Bridge;
 using AetherCodex.Editor;
@@ -35,6 +37,12 @@ public partial class MainWindow : Window
     private bool _sidebarOpen = true;
     private bool _pythiaOpen = true;
     private readonly MenuItem _themeMenu = new() { Header = "Theme" };
+    private SearchInProjectWindow? _searchWindow;
+    private bool _linkExplorer;
+    private readonly List<(string Path, string Glyph)> _quickFiles = new();
+    private string _quickRoot = "";
+    private bool _quickScanned;
+    private sealed record QuickFileMatch(string Glyph, string Display, string Path);
 
     // ── Hermetic chord table — window-scoped commands with default gestures ──
     private static readonly RoutedCommand NewFileCommand = new(nameof(NewFileCommand), typeof(MainWindow));
@@ -55,11 +63,20 @@ public partial class MainWindow : Window
     private string _projectRoot = "";
     private MultiCursorController? _multi;
 
+    // Font-size zoom: session-scoped, relative to the configured base size.
+    private const double EditorMinFontSize = 6.0;
+    private const double EditorMaxFontSize = 72.0;
+    private const double EditorZoomStep = 1.1;
+    private readonly DispatcherTimer _zoomTimer = new() { Interval = TimeSpan.FromMilliseconds(1400) };
+    private double EditorBaseFontSize => _settings.FontSize > 0 ? _settings.FontSize : 14.0;
+
     private string CurrentFile => _activeDoc?.Path ?? "";
 
     public MainWindow()
     {
         InitializeComponent();
+
+        _linkExplorer = _settings.LinkExplorerToFile;
 
         LoadThemes();
         ApplyTheme(_theme);
@@ -77,7 +94,17 @@ public partial class MainWindow : Window
         // TextMate-style multi-cursor (Ctrl+W / Ctrl+Shift+W grow cursors).
         _multi = new MultiCursorController(Editor);
 
+        // Font-size zoom: Ctrl+wheel / Ctrl+± / Ctrl+0 with a floating indicator.
+        Editor.PreviewMouseWheel += OnEditorPreviewMouseWheel;
+        Editor.PreviewKeyDown += OnEditorPreviewKeyDown;
+        _zoomTimer.Tick += (_, _) => ZoomPopup.IsOpen = false;
+
         Browser.FileOpened += path => _ = OpenFileAsync(path);
+        Browser.RevealInExplorer += RevealInExplorer;
+        Browser.RenameRequested += OnBrowserRename;
+        Browser.DeleteRequested += OnBrowserDelete;
+        Browser.DuplicateRequested += OnBrowserDuplicate;
+        Browser.NewItemRequested += OnBrowserNewItem;
 
         // The Pythia header hosts the window caption buttons while visible;
         // route its requests back to the window-level handlers.
@@ -169,6 +196,9 @@ public partial class MainWindow : Window
         Add("Open File…", OnOpenFile, "Ctrl+O");
         Add("Go to File…", OnGoToFile, "Ctrl+P");
         Add("Find in Project…", OnFindInProject, "Ctrl+Shift+F");
+        var linkExplorer = Add("Link Explorer to Active File", OnToggleLinkExplorer);
+        linkExplorer.IsCheckable = true;
+        linkExplorer.IsChecked = _linkExplorer;
         menu.Items.Add(new Separator());
         Add("New Document…", OnNewDocument);
         menu.Items.Add(new Separator());
@@ -195,6 +225,15 @@ public partial class MainWindow : Window
         menu.PlacementTarget = sender as UIElement ?? OverflowButton;
         menu.Placement = ReferenceEquals(sender, OverflowButton) ? PlacementMode.Top : PlacementMode.Bottom;
         menu.IsOpen = true;
+    }
+
+    private void OnToggleLinkExplorer(object sender, RoutedEventArgs e)
+    {
+        _linkExplorer = sender is MenuItem { IsChecked: true };
+        _settings.LinkExplorerToFile = _linkExplorer;
+        _settings.Save();
+        if (_linkExplorer && _activeDoc is { Path.Length: > 0 } doc)
+            Browser.Reveal(doc.Path);
     }
 
     private void ApplyTheme(SyntaxTheme theme)
@@ -282,6 +321,73 @@ public partial class MainWindow : Window
     {
         var target = _settings.UseThemeOpacity ? _theme.WindowOpacity : _settings.WindowOpacity;
         Opacity = Math.Clamp(target, 0.15, 1.0);
+    }
+
+    // ── Font-size zoom ──────────────────────────────────────────────
+
+    private void OnEditorPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
+        e.Handled = true;
+        ZoomEditor(e.Delta > 0 ? EditorZoomStep : 1.0 / EditorZoomStep);
+    }
+
+    private void OnEditorPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
+
+        switch (e.Key)
+        {
+            case Key.OemPlus:
+            case Key.Add:
+                e.Handled = true;
+                ZoomEditor(EditorZoomStep);
+                break;
+            case Key.OemMinus:
+            case Key.Subtract:
+                e.Handled = true;
+                ZoomEditor(1.0 / EditorZoomStep);
+                break;
+            case Key.D0:
+            case Key.NumPad0:
+                e.Handled = true;
+                ResetEditorZoom();
+                break;
+        }
+    }
+
+    private void ZoomEditor(double factor)
+    {
+        double next = Math.Clamp(Editor.FontSize * factor, EditorMinFontSize, EditorMaxFontSize);
+        if (Math.Abs(next - Editor.FontSize) >= 0.05)
+        {
+            Editor.FontSize = next;
+            SyncGutter();
+        }
+        ShowZoomIndicator();
+    }
+
+    private void ResetEditorZoom()
+    {
+        Editor.FontSize = EditorBaseFontSize;
+        SyncGutter();
+        ShowZoomIndicator();
+    }
+
+    private void ShowZoomIndicator()
+    {
+        ZoomPercentText.Text = $"{(int)Math.Round(Editor.FontSize / EditorBaseFontSize * 100.0)}%";
+        ZoomAbsoluteText.Text = $"{Editor.FontSize:0.#} pt";
+        ZoomPopup.IsOpen = true;
+        _zoomTimer.Stop();
+        _zoomTimer.Start();
+    }
+
+    private void OnZoomReset(object sender, RoutedEventArgs e)
+    {
+        ResetEditorZoom();
+        _zoomTimer.Stop();
+        ZoomPopup.IsOpen = false;
     }
 
     private async void OnShowSettings(object sender, RoutedEventArgs e)
@@ -374,6 +480,9 @@ public partial class MainWindow : Window
     {
         if (!File.Exists(path)) return;
 
+        // Resolve the file's project syntax overrides before its language is chosen.
+        ReloadSyntaxOverrides(path);
+
         var existing = _documents.FirstOrDefault(
             d => string.Equals(d.Path, path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -437,6 +546,9 @@ public partial class MainWindow : Window
         UpdateLanguageCombo();
         UpdateSourceButton();
         RebuildTabs();
+
+        if (_linkExplorer && doc.Path.Length > 0)
+            Browser.Reveal(doc.Path);
     }
 
     /// <summary>Flush the live editor surface back into the active document's buffer.</summary>
@@ -564,6 +676,225 @@ public partial class MainWindow : Window
         Editor.Focus();
     }
 
+    private static void RevealInExplorer(string path)
+    {
+        if (!File.Exists(path) && !Directory.Exists(path)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"")
+            {
+                UseShellExecute = false
+            });
+        }
+        catch { /* explorer unavailable */ }
+    }
+
+    private void OnBrowserDuplicate(string path)
+    {
+        if (!File.Exists(path)) return;
+        var dir = Path.GetDirectoryName(path) ?? "";
+        var baseName = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+
+        string target;
+        int n = 1;
+        do
+        {
+            target = Path.Combine(dir, n == 1 ? $"{baseName} - copy{ext}" : $"{baseName} - copy {n}{ext}");
+            n++;
+        } while (File.Exists(target));
+
+        try
+        {
+            File.Copy(path, target, overwrite: false);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Duplicate failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        Browser.Refresh(dir);
+        Browser.Reveal(target);
+    }
+
+    private void OnBrowserRename(string path)
+    {
+        bool isDir = Directory.Exists(path);
+        if (!isDir && !File.Exists(path)) return;
+
+        var name = PromptForName("Rename", "New name:", Path.GetFileName(path));
+        if (string.IsNullOrWhiteSpace(name) || name == Path.GetFileName(path)) return;
+
+        var dir = Path.GetDirectoryName(path) ?? "";
+        var target = Path.Combine(dir, name);
+        if (string.Equals(path, target, StringComparison.OrdinalIgnoreCase)) return;
+        if (File.Exists(target) || Directory.Exists(target))
+        {
+            MessageBox.Show("A file or folder with that name already exists.", "Rename",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            if (isDir) Directory.Move(path, target);
+            else File.Move(path, target);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Rename failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        // Re-point any open documents at/under the old path.
+        var prefix = path + Path.DirectorySeparatorChar;
+        foreach (var doc in _documents)
+        {
+            if (string.Equals(doc.Path, path, StringComparison.OrdinalIgnoreCase))
+                doc.Path = target;
+            else if (isDir && doc.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                doc.Path = target + Path.DirectorySeparatorChar + doc.Path[prefix.Length..];
+        }
+
+        // If the active tab changed extension (e.g. .txt → .rb), re-derive its language.
+        if (_activeDoc is { IsRich: false } active)
+        {
+            _language = Languages.FromPath(active.Path);
+            active.Language = _language.Name;
+            ReattachHighlighter();
+        }
+
+        Browser.Refresh(dir);
+        if (!isDir) Browser.Reveal(target);
+        UpdateFilePath();
+        UpdateLanguageCombo();
+        RebuildTabs();
+    }
+
+    private void OnBrowserDelete(string path)
+    {
+        bool isDir = Directory.Exists(path);
+        if (!isDir && !File.Exists(path)) return;
+
+        var confirm = MessageBox.Show(
+            $"Delete {(isDir ? "folder" : "file")} \"{Path.GetFileName(path)}\" permanently?",
+            "Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        try
+        {
+            if (isDir) Directory.Delete(path, recursive: true);
+            else File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Delete failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        // Close open documents that lived at/under the deleted path.
+        var prefix = path + Path.DirectorySeparatorChar;
+        foreach (var doc in _documents.ToList())
+        {
+            if (string.Equals(doc.Path, path, StringComparison.OrdinalIgnoreCase)
+                || (isDir && doc.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                _documents.Remove(doc);
+                if (ReferenceEquals(doc, _activeDoc)) _activeDoc = null;
+            }
+        }
+
+        Browser.Refresh(Path.GetDirectoryName(path) ?? "");
+
+        if (_documents.Count == 0)
+            ClearEditor();
+        else if (_activeDoc is null)
+            ActivateDocument(_documents[0]);
+        else
+            RebuildTabs();
+    }
+
+    private void OnBrowserNewItem(string directory, bool isFolder)
+    {
+        string? name = isFolder
+            ? PromptForName("New Folder", "Folder name:", "New Folder")
+            : PromptForName("New File", "File name:", "Untitled.txt");
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        var path = Path.Combine(directory, name);
+        try
+        {
+            if (isFolder)
+            {
+                if (Directory.Exists(path))
+                {
+                    MessageBox.Show("Folder already exists.", "New Folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                Directory.CreateDirectory(path);
+            }
+            else
+            {
+                if (File.Exists(path))
+                {
+                    MessageBox.Show("File already exists.", "New File", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                File.WriteAllText(path, "", new UTF8Encoding(false));
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Create failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        Browser.Refresh(directory);
+        if (!isFolder)
+        {
+            Browser.Reveal(path);
+            _ = OpenFileAsync(path);
+        }
+    }
+
+    private static string? PromptForName(string title, string label, string initial)
+    {
+        var window = new Window
+        {
+            Title = title,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            WindowStyle = WindowStyle.ToolWindow
+        };
+
+        var stack = new StackPanel { Margin = new Thickness(16) };
+        stack.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 0, 0, 6) });
+        var box = new TextBox { Text = initial };
+        stack.Children.Add(box);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        var ok = new Button { Content = "OK", Width = 80, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+        var cancel = new Button { Content = "Cancel", Width = 80, IsCancel = true };
+        buttons.Children.Add(ok);
+        buttons.Children.Add(cancel);
+        stack.Children.Add(buttons);
+
+        window.Content = stack;
+        ok.Click += (_, _) => { window.DialogResult = true; };
+        box.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
+
+        return window.ShowDialog() == true ? box.Text.Trim() : null;
+    }
+
     /// <summary>
     /// Search scope for "Go to File". Prefers the opened project root, then the
     /// daemon-resolved `.aethercodex` root, then the active file's directory, and only
@@ -577,13 +908,117 @@ public partial class MainWindow : Window
 
     private void OnGoToFile(object sender, RoutedEventArgs e)
     {
-        var dialog = new GoToFileWindow(ProjectRoot, CurrentFile) { Owner = this };
-        if (dialog.ShowDialog() == true && dialog.SelectedPath is { } path)
-            _ = OpenFileAsync(path);
+        if (QuickSearch.Visibility == Visibility.Visible)
+        {
+            HideQuickSearch();
+            return;
+        }
+        ShowQuickSearch();
     }
+
+    private void ShowQuickSearch()
+    {
+        var root = ProjectRoot;
+        if (!_quickScanned || !string.Equals(_quickRoot, root, StringComparison.OrdinalIgnoreCase))
+            ScanQuickFiles(root);
+
+        QuickSearch.Visibility = Visibility.Visible;
+        QuickQuery.Text = "";
+        QuickHint.Visibility = Visibility.Visible;
+        RefreshQuickResults();
+        QuickQuery.Focus();
+    }
+
+    private void HideQuickSearch()
+    {
+        QuickSearch.Visibility = Visibility.Collapsed;
+        Editor.Focus();
+    }
+
+    private void ScanQuickFiles(string root)
+    {
+        _quickFiles.Clear();
+        _quickRoot = root;
+        _quickScanned = true;
+        if (!Directory.Exists(root)) return;
+        try
+        {
+            foreach (var file in ProjectSearch.EnumerateFiles(root, new[] { "*" }))
+                _quickFiles.Add((file, QuickGlyph(file)));
+        }
+        catch { /* unreadable tree */ }
+    }
+
+    private void RefreshQuickResults()
+    {
+        var q = QuickQuery.Text.Trim();
+        IEnumerable<(string Path, string Glyph)> matches = _quickFiles;
+        if (q.Length > 0)
+        {
+            var parts = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            matches = _quickFiles.Where(f =>
+                parts.All(p => f.Path.Contains(p, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var items = matches
+            .OrderBy(f => f.Path.Length)
+            .Take(200)
+            .Select(f => new QuickFileMatch(f.Glyph, Path.GetRelativePath(_quickRoot, f.Path), f.Path))
+            .ToList();
+        QuickResults.ItemsSource = items;
+        if (QuickResults.Items.Count > 0) QuickResults.SelectedIndex = 0;
+    }
+
+    private void OnQuickQueryChanged(object sender, TextChangedEventArgs e)
+    {
+        QuickHint.Visibility = QuickQuery.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RefreshQuickResults();
+    }
+
+    private void OnQuickQueryKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) { HideQuickSearch(); return; }
+        if (e.Key == Key.Enter) { AcceptQuickSelection(); return; }
+        if (e.Key == Key.Down && QuickResults.Items.Count > 0)
+            QuickResults.SelectedIndex = Math.Min(QuickResults.SelectedIndex + 1, QuickResults.Items.Count - 1);
+        else if (e.Key == Key.Up && QuickResults.Items.Count > 0)
+            QuickResults.SelectedIndex = Math.Max(QuickResults.SelectedIndex - 1, 0);
+    }
+
+    private void OnQuickResultDoubleClick(object sender, MouseButtonEventArgs e) => AcceptQuickSelection();
+
+    private void AcceptQuickSelection()
+    {
+        if (QuickResults.SelectedItem is QuickFileMatch match)
+        {
+            HideQuickSearch();
+            _ = OpenFileAsync(match.Path);
+        }
+    }
+
+    private static string QuickGlyph(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".rb" => "◆",
+        ".cs" => "♯",
+        ".swift" => "🕊",
+        ".py" => "🐍",
+        ".js" or ".ts" or ".jsx" or ".tsx" => "§",
+        ".json" or ".yml" or ".yaml" => "≡",
+        ".md" => "✎",
+        ".haml" => "◇",
+        ".sass" or ".scss" => "◇",
+        ".html" or ".css" => "◇",
+        _ => "·",
+    };
 
     private void OnFindInProject(object sender, RoutedEventArgs e)
     {
+        if (_searchWindow is { IsVisible: true })
+        {
+            _searchWindow.Activate();
+            return;
+        }
+
         string initial = "";
         var ta = Editor.TextArea;
         if (ta.Selection.Length > 0)
@@ -598,8 +1033,10 @@ public partial class MainWindow : Window
         }
 
         var dialog = new SearchInProjectWindow(ProjectRoot, CurrentFile, initial) { Owner = this };
-        if (dialog.ShowDialog() == true && dialog.OpenPath is { } path)
-            _ = OpenFileAtAsync(path, dialog.OpenLine, dialog.OpenColumn, dialog.OpenLength);
+        dialog.ResultChosen += row => _ = OpenFileAtAsync(row.File, row.Line, row.Column, row.Length);
+        dialog.Closed += (_, _) => _searchWindow = null;
+        _searchWindow = dialog;
+        dialog.Show();
     }
 
     private async Task OpenFileAtAsync(string path, int line, int column, int length)
@@ -969,6 +1406,8 @@ public partial class MainWindow : Window
         "yaml" => "≡",
         "xml" => "◇",
         "css" => "◇",
+        "sass" => "◇",
+        "haml" => "◇",
         "shell" => "▷",
         "haskell" => "λ",
         "markdown" => "✎",
@@ -1078,11 +1517,19 @@ public partial class MainWindow : Window
     {
         _projectRoot = directory;
         _settings.LastDirectory = directory;
+        ReloadSyntaxOverrides(directory);
         Browser.SetRoot(directory);
         UpdateWindowTitle();
         Title = WindowTitleText.Text;
         UpdateFilePath();
         _ = ActivateContextAndSyncAsync(directory);
+    }
+
+    /// <summary>Re-load per-project `.aether-properties` syntax overrides for the given
+    /// file/folder context and install them into the language registry.</summary>
+    private static void ReloadSyntaxOverrides(string? context)
+    {
+        Languages.SetCustomExtensions(ProjectProperties.LoadSyntaxOverrides(context));
     }
 
     /// <summary>
@@ -1110,6 +1557,7 @@ public partial class MainWindow : Window
                 // Prefer the daemon-resolved root (nearest .aethercodex ancestor).
                 Environment.SetEnvironmentVariable("AETHER_PROJECT_ROOT", root);
                 _projectRoot = root;
+                ReloadSyntaxOverrides(root);
                 await Pythia.RestoreHistoryAsync(root);
             }
         }

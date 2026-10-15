@@ -82,6 +82,12 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
             excluded.Add((m.Index, m.Length));
         }
 
+        // 3.5 Markup: tag names + attribute/class/id names (HTML/XML, HAML %tag / #id / .class).
+        if (_language.TagRegex is { } tagRx)
+            ApplyRegex(line, text, excluded, tagRx, "entity.name.tag", Fallback.Tag);
+        if (_language.AttributeRegex is { } attrRx)
+            ApplyRegex(line, text, excluded, attrRx, "entity.other.attribute-name", Fallback.Attribute);
+
         // 4. Structural tokens (numbers, keywords, types, constants, builtins, calls).
         ApplyRegex(line, text, excluded, _language.NumberRegex, "number", Fallback.Number);
         ApplyRegex(line, text, excluded, _language.ConstantRegex, "constant.language", Fallback.Constant);
@@ -209,6 +215,8 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
         public static readonly ScopeStyle Type = new(Color.FromRgb(0x4E, 0xC9, 0xB0));
         public static readonly ScopeStyle Constant = new(Color.FromRgb(0x6A, 0x99, 0x55));
         public static readonly ScopeStyle Function = new(Color.FromRgb(0x61, 0xAF, 0xEF));
+        public static readonly ScopeStyle Tag = new(Color.FromRgb(0xE0, 0x6C, 0x75));
+        public static readonly ScopeStyle Attribute = new(Color.FromRgb(0xD1, 0x9A, 0x66));
     }
 
     /// <summary>Freeze brushes so the same color isn't re-allocated per token.</summary>

@@ -155,6 +155,46 @@
                 </DockPanel>
             </Border>
 
+            <!-- Quick search (Go to File) overlay — bottom-docked, TextMate-style -->
+            <Border x:Name="QuickSearch" DockPanel.Dock="Bottom" Visibility="Collapsed"
+                    Background="{DynamicResource PanelBackground}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="0,1,0,0">
+                <Grid Margin="10,10,10,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
+                            Background="{DynamicResource EditorBackground}">
+                        <Grid>
+                            <TextBox x:Name="QuickQuery" Padding="6,5" FontSize="13" BorderThickness="0"
+                                     Background="Transparent" Foreground="{DynamicResource Foreground}"
+                                     CaretBrush="{DynamicResource Foreground}"
+                                     PreviewKeyDown="OnQuickQueryKeyDown" TextChanged="OnQuickQueryChanged"/>
+                            <TextBlock x:Name="QuickHint" Text="Go to file…" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource MutedForeground}"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+                    </Border>
+                    <ListBox x:Name="QuickResults" Grid.Row="1" MaxHeight="240" Margin="0,8,0,0"
+                             BorderThickness="0" Background="Transparent"
+                             MouseDoubleClick="OnQuickResultDoubleClick"
+                             HorizontalContentAlignment="Stretch"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Glyph}" Width="18" Foreground="{DynamicResource Accent}"/>
+                                    <TextBlock Text="{Binding Display}" Foreground="{DynamicResource Foreground}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="EditorColumn" Width="*"/>
@@ -184,5 +224,30 @@
 
         <!-- Oracle panel -->
         <panels:PythiaPanel x:Name="Pythia" Grid.Row="0" Grid.RowSpan="2" Grid.Column="5"/>
+
+        <!-- Floating font-size zoom indicator (Ctrl+wheel / Ctrl+± / Ctrl+0) -->
+        <Popup x:Name="ZoomPopup" Placement="Center" PlacementTarget="{Binding ElementName=Editor}"
+               AllowsTransparency="True" StaysOpen="True" IsHitTestVisible="True">
+            <Border Background="{DynamicResource PanelBackground}"
+                    BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="10"
+                    Padding="18,10" Margin="16"
+                    SnapsToDevicePixels="True" UseLayoutRounding="True">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="22" ShadowDepth="3" Direction="270" Opacity="0.45" Color="#000000"/>
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="ZoomPercentText" Text="100%" FontSize="19" FontWeight="SemiBold"
+                               Foreground="{DynamicResource AccentBright}" VerticalAlignment="Center"/>
+                    <TextBlock Text="  ·  " FontSize="19" Foreground="{DynamicResource MutedForeground}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ZoomAbsoluteText" Text="14 pt" FontSize="19"
+                               Foreground="{DynamicResource Foreground}" VerticalAlignment="Center"/>
+                    <Button Content="Reset" Click="OnZoomReset" Cursor="Hand"
+                            Margin="16,0,0,0" Padding="12,4" VerticalAlignment="Center"
+                            FontSize="13" FontFamily="{DynamicResource UiFont}"/>
+                </StackPanel>
+            </Border>
+        </Popup>
     </Grid>
 </Window>

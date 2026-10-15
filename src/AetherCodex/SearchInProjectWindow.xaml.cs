@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Threading;
 using AetherCodex.Editor;
 using AetherCodex.Models;
 
@@ -12,6 +11,9 @@ public partial class SearchInProjectWindow : Window
 {
     public sealed record ResultRow(string Glyph, string Header, string Snippet, string File, int Line, int Column, int Length);
 
+    /// <summary>Raised (modeless) when the user commits a result; the window closes itself.</summary>
+    public event Action<ResultRow>? ResultChosen;
+
     public string? OpenPath { get; private set; }
     public int OpenLine { get; private set; }
     public int OpenColumn { get; private set; }
@@ -20,9 +22,10 @@ public partial class SearchInProjectWindow : Window
     private readonly string _root;
     private readonly string? _currentFile;
     private readonly SearchHistory _history;
-    private readonly DispatcherTimer _debounce;
+    private CancellationTokenSource? _searchCts;
     private string? _folderScope;
     private bool _suppress;
+    private bool _initialized;
 
     public SearchInProjectWindow(string projectRoot, string? currentFile, string initialQuery = "")
     {
@@ -30,19 +33,45 @@ public partial class SearchInProjectWindow : Window
         _root = projectRoot;
         _currentFile = currentFile;
         _history = SearchHistory.Load();
-        _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _debounce.Tick += (_, _) => { _debounce.Stop(); RunSearch(); };
 
         ScopeBox.SelectedIndex = 0;
-        Query.Text = initialQuery;
+        Footer.Text = "Press Enter to search";
+
         Query.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(OnQueryChanged));
+        RestoreLastState();
+        if (initialQuery.Length > 0)
+            Query.Text = initialQuery;
 
         Loaded += (_, _) =>
         {
             Query.Focus();
             PopulateHistory();
-            if (initialQuery.Length > 0) RunSearch();
         };
+
+        _initialized = true;
+    }
+
+    /// <summary>Rehydrate the previous search run — query, options and result list.</summary>
+    private void RestoreLastState()
+    {
+        var last = _history.Last;
+        if (last is null) return;
+
+        RegexToggle.IsChecked = last.Regex;
+        CaseToggle.IsChecked = last.CaseSensitive;
+        WordToggle.IsChecked = last.WholeWord;
+        ScopeBox.SelectedIndex = Math.Clamp(last.Scope, 0, 2);
+        _folderScope = last.FolderPath;
+        FileTypes.Text = last.FileTypes;
+        Query.Text = last.Query;
+        Footer.Text = last.Footer;
+
+        if (last.Results.Count > 0)
+        {
+            Results.ItemsSource = last.Results
+                .Select(r => new ResultRow(r.Glyph, r.Header, r.Snippet, r.File, r.Line, r.Column, r.Length))
+                .ToList();
+        }
     }
 
     private void PopulateHistory()
@@ -53,14 +82,12 @@ public partial class SearchInProjectWindow : Window
     private void OnQueryChanged(object sender, TextChangedEventArgs e)
     {
         Hint.Visibility = string.IsNullOrEmpty(Query.Text) ? Visibility.Visible : Visibility.Collapsed;
-        _debounce.Stop();
-        _debounce.Start();
     }
 
     private void OnQueryKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { DialogResult = false; Close(); return; }
-        if (e.Key == Key.Enter) { _debounce.Stop(); RunSearch(); e.Handled = true; return; }
+        if (e.Key == Key.Escape) { Close(); return; }
+        if (e.Key == Key.Enter) { RunSearch(); e.Handled = true; return; }
         if (e.Key == Key.Down && Results.Items.Count > 0)
         {
             Results.SelectedIndex = Math.Min(Results.SelectedIndex + 1, Results.Items.Count - 1);
@@ -77,14 +104,13 @@ public partial class SearchInProjectWindow : Window
 
     private void OnOptionChanged(object sender, RoutedEventArgs e)
     {
+        if (!_initialized) return;
         PopulateHistory();
-        _debounce.Stop();
-        _debounce.Start();
     }
 
     private void OnScopeChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppress) return;
+        if (!_initialized || _suppress) return;
         if (ScopeBox.SelectedIndex == 2)
         {
             _suppress = true;
@@ -95,8 +121,6 @@ public partial class SearchInProjectWindow : Window
                 ScopeBox.SelectedIndex = 0;
             _suppress = false;
         }
-        _debounce.Stop();
-        _debounce.Start();
     }
 
     private static IReadOnlyList<string> ParseFileTypes(string input)
@@ -126,13 +150,13 @@ public partial class SearchInProjectWindow : Window
         return globs.Distinct().ToList();
     }
 
-    private void RunSearch()
+    private async void RunSearch()
     {
         var q = Query.Text;
         if (string.IsNullOrWhiteSpace(q))
         {
             Results.ItemsSource = null;
-            Footer.Text = string.Empty;
+            Footer.Text = "Press Enter to search";
             return;
         }
 
@@ -166,30 +190,74 @@ public partial class SearchInProjectWindow : Window
             CaseToggle.IsChecked == true,
             WordToggle.IsChecked == true);
 
-        var rows = new List<ResultRow>();
-        foreach (var file in files)
+        _searchCts?.Cancel();
+        var cts = _searchCts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        Footer.Text = $"Searching {scopeLabel}…";
+
+        List<ResultRow> rows;
+        try
         {
-            if (rows.Count >= ProjectSearch.MaxResults) break;
-            try
+            rows = await Task.Run(() =>
             {
-                foreach (var m in ProjectSearch.MatchFile(file, options))
+                var list = new List<ResultRow>();
+                foreach (var file in files)
                 {
-                    rows.Add(new ResultRow(
-                        m.Glyph,
-                        $"{Rel(_root, m.File)}:{m.Line}",
-                        m.LineText,
-                        m.File, m.Line, m.Column, m.Length));
-                    if (rows.Count >= ProjectSearch.MaxResults) break;
+                    if (token.IsCancellationRequested) break;
+                    if (list.Count >= ProjectSearch.MaxResults) break;
+                    try
+                    {
+                        foreach (var m in ProjectSearch.MatchFile(file, options, token))
+                        {
+                            if (token.IsCancellationRequested) break;
+                            list.Add(new ResultRow(
+                                m.Glyph,
+                                $"{Rel(_root, m.File)}:{m.Line}",
+                                m.LineText,
+                                m.File, m.Line, m.Column, m.Length));
+                            if (list.Count >= ProjectSearch.MaxResults) break;
+                        }
+                    }
+                    catch { /* unreadable file */ }
                 }
-            }
-            catch { /* unreadable file */ }
+                return list;
+            }, token);
         }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (cts != _searchCts) return; // superseded by a newer search
 
         Results.ItemsSource = rows;
         Footer.Text = rows.Count >= ProjectSearch.MaxResults
             ? $"{rows.Count}+ matches in {scopeLabel}"
             : $"{rows.Count} match{(rows.Count == 1 ? "" : "es")} in {scopeLabel}";
         if (rows.Count > 0) Results.SelectedIndex = 0;
+
+        _history.Last = new SearchHistory.LastState
+        {
+            Query = q,
+            Regex = options.Regex,
+            CaseSensitive = options.CaseSensitive,
+            WholeWord = options.WholeWord,
+            Scope = ScopeBox.SelectedIndex,
+            FolderPath = _folderScope,
+            FileTypes = FileTypes.Text,
+            Footer = Footer.Text,
+            Results = rows.Select(r => new SearchHistory.LastResult
+            {
+                Glyph = r.Glyph,
+                Header = r.Header,
+                Snippet = r.Snippet,
+                File = r.File,
+                Line = r.Line,
+                Column = r.Column,
+                Length = r.Length,
+            }).ToList(),
+        };
 
         _history.Remember(_root, q, options.Regex);
         _history.Save();
@@ -212,7 +280,7 @@ public partial class SearchInProjectWindow : Window
             OpenLine = row.Line;
             OpenColumn = row.Column;
             OpenLength = row.Length;
-            DialogResult = true;
+            ResultChosen?.Invoke(row);
         }
         Close();
     }

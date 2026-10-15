@@ -28,6 +28,9 @@ public sealed class AppSettings
     public bool HighlightCurrentLine { get; set; } = true;
     public bool AutoStartDaemon { get; set; } = false;
     public string LastDirectory { get; set; } = "";
+    /// <summary>When true, the file browser tracks the active document — expanding
+    /// and scrolling to the file on open and on tab switch.</summary>
+    public bool LinkExplorerToFile { get; set; } = true;
 
     // Oracle / AI provider credentials. Persisted in settings.json; handed to the
     // Ruby daemon as AETHER_* environment variables (the highest-priority channel

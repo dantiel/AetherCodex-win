@@ -10,11 +10,37 @@ namespace AetherCodex.Models;
 public sealed class SearchHistory
 {
     public Dictionary<string, Entry> Projects { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public LastState? Last { get; set; }
 
     public sealed class Entry
     {
         public List<string> Searches { get; set; } = new();
         public List<string> Regexes { get; set; } = new();
+    }
+
+    /// <summary>The most recent find-in-project run, restored when the window reopens.</summary>
+    public sealed class LastState
+    {
+        public string Query { get; set; } = "";
+        public bool Regex { get; set; }
+        public bool CaseSensitive { get; set; }
+        public bool WholeWord { get; set; }
+        public int Scope { get; set; }
+        public string? FolderPath { get; set; }
+        public string FileTypes { get; set; } = "";
+        public string Footer { get; set; } = "";
+        public List<LastResult> Results { get; set; } = new();
+    }
+
+    public sealed class LastResult
+    {
+        public string Glyph { get; set; } = "";
+        public string Header { get; set; } = "";
+        public string Snippet { get; set; } = "";
+        public string File { get; set; } = "";
+        public int Line { get; set; }
+        public int Column { get; set; }
+        public int Length { get; set; }
     }
 
     private const int MaxEntries = 50;
