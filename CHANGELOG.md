@@ -6,6 +6,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/). The version
 number lives in `src/AetherCodex/AetherCodex.csproj` (`<Version>`).
 
+## [0.2.0] — 2026-10-15 — Second Alpha
+
+The body gains finesse: a live font-size zoom with a floating HUD, markup and
+HAML highlighting, a per-item file-browser context menu, and the Go-to-File
+modal dissolved into a bottom-docked quick-search overlay.
+
+### Added
+
+- **Font size zoom** — `Ctrl`+mouse wheel, `Ctrl`+`+`/`-`, and `Ctrl`+`0`,
+  with a floating indicator (percent + absolute pt) and a Reset button.
+- **Markup & HAML highlighting** — tag, `.class`, `#id`, and attribute
+  colouring for HAML/HTML/XML in both the editor and markdown fenced code.
+- **File browser context menu** — open, duplicate, new file/folder, refresh,
+  reveal in Explorer, copy (relative) path, rename, delete (root protected).
+- **Quick search overlay** — Go to File (`Ctrl`+`P`) is now a bottom-docked
+  overlay, replacing the modal dialog.
+- **Modeless Find in Project** (`Ctrl`+`Shift`+`F`) — a single reused window.
+- **Haskell highlighting** + comment-inner markup (TODO/FIXME markers,
+  `code`/**bold**/*italic* inside comments).
+- **Custom gutter** — padded line numbers with active/selected-line tint.
+- **Window transparency** — per-theme opacity with a user override
+  (Settings → Appearance).
+- **Tabbed settings dialog** (General / Editor / Appearance / AI Provider).
+- **Theme contrast fixes** — sidebar + menu colours with a WCAG 4.5:1 floor.
+- **Markdown table emphasis** — inline **bold**, `code`, links in table cells.
+- **Theme-scope typography** — configurable Syne UI font (auto-install).
+
+### Changed
+
+- Go to File is no longer a modal; it is the quick-search overlay.
+
 ## [0.1.0] — 2026-10-12 — First Alpha
 
 The body is standing, the soul is breathing: the first runnable native
