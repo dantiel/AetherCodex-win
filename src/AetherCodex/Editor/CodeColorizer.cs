@@ -141,8 +141,11 @@ public static class CodeColorizer
         AddRegexTokens(text, tokens, offset, lang.KeywordRegex, "keyword");
         AddRegexTokens(text, tokens, offset, lang.TypeRegex, "type");
         AddRegexTokens(text, tokens, offset, lang.ConstantRegex, "constant.language");
+        if (lang.ConstructorRegex is { } ctorRx) AddRegexTokens(text, tokens, offset, ctorRx, "type");
         AddRegexTokens(text, tokens, offset, lang.BuiltinRegex, "support.function");
+        if (lang.FunctionDefinitionRegex is { } defRx) AddRegexTokens(text, tokens, offset, defRx, "entity.name.function");
         AddRegexTokens(text, tokens, offset, lang.FunctionCallRegex, "entity.name.function");
+        if (lang.FunctionApplicationRegex is { } appRx) AddRegexTokens(text, tokens, offset, appRx, "entity.name.function");
     }
 
     private static void AddRegexTokens(string text, List<(int, int, string)> tokens, int offset, Regex rx, string scope)

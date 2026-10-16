@@ -17,6 +17,13 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="0,6,0,0"/>
         </Style>
+        <Style x:Key="SourceBadge" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource MutedForeground}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+        </Style>
         <Style TargetType="TabItem">
             <Setter Property="Padding" Value="16,10"/>
             <Setter Property="FontSize" Value="13"/>
@@ -142,6 +149,94 @@
 
                         <TextBlock Text="The key is stored locally in settings.json and passed to the Ruby oracle as an environment variable. Changing it restarts the daemon so the new model takes effect."
                                    Style="{StaticResource Hint}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Project">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,20">
+                    <StackPanel MaxWidth="520" HorizontalAlignment="Left">
+                        <TextBlock Text="Config file" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,4">
+                            <Button x:Name="OpenConfigButton" Content="Open" DockPanel.Dock="Right"
+                                    Click="OnOpenConfig" MinWidth="64" Padding="10,2" Margin="8,0,0,0"
+                                    ToolTip="Open this file in the editor (creates it if missing)"/>
+                            <TextBox x:Name="ConfigPathText" IsReadOnly="True" VerticalContentAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock x:Name="ConfigFormatText" Style="{StaticResource Hint}" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="ProjectRootText" Style="{StaticResource Hint}" Margin="0,0,0,16"
+                                   TextTrimming="CharacterEllipsis"/>
+
+                        <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock x:Name="NameSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <TextBox x:Name="NameBox" ToolTip="Context name advertised to peers; falls back to the folder name"/>
+                        </DockPanel>
+
+                        <TextBlock Text="Model" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock x:Name="ModelSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <TextBox x:Name="ModelBox" ToolTip="Model id — a preset, or a custom id"/>
+                        </DockPanel>
+
+                        <TextBlock Text="Fast model" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock x:Name="FastModelSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <TextBox x:Name="FastModelBox" ToolTip="Model used for quick/low-latency turns"/>
+                        </DockPanel>
+
+                        <TextBlock Text="API type" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock x:Name="ApiTypeSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <TextBox x:Name="ApiTypeBox" ToolTip="deepseek / openai / anthropic / gemini / custom"/>
+                        </DockPanel>
+
+                        <TextBlock Text="Endpoint" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock x:Name="ApiUrlSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <TextBox x:Name="ApiUrlBox" ToolTip="API endpoint; auto-derived from the model unless overridden"/>
+                        </DockPanel>
+
+                        <TextBlock Text="API key" Style="{StaticResource FieldLabel}"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="ProjectKeyPassword" Grid.Column="0" VerticalContentAlignment="Center"
+                                         PasswordChanged="OnProjectKeyPasswordChanged"
+                                         ToolTip="Provider API key for this project; inherited from home when unset"/>
+                            <TextBox x:Name="ProjectKeyPlain" Grid.Column="0" VerticalContentAlignment="Center" Visibility="Collapsed"
+                                     TextChanged="OnProjectKeyPlainChanged"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <CheckBox x:Name="ProjectShowKeyCheck" Content="Show" VerticalAlignment="Center"
+                                          Margin="8,0,0,0" Checked="OnProjectShowKeyChanged" Unchecked="OnProjectShowKeyChanged"/>
+                                <TextBlock x:Name="ApiKeySource" Style="{StaticResource SourceBadge}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Port" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock x:Name="PortSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <TextBox x:Name="PortBox" ToolTip="Daemon port (default 4567)"/>
+                        </DockPanel>
+
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock x:Name="DevModeSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <CheckBox x:Name="DevModeCheck" Content="Developer mode (dangerous instruments)"
+                                      ToolTip="Enables experimental / destructive instruments"/>
+                        </DockPanel>
+
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock x:Name="ReasoningModelSource" DockPanel.Dock="Right" Style="{StaticResource SourceBadge}"/>
+                            <CheckBox x:Name="ReasoningModelCheck" Content="Reasoning model enabled"/>
+                        </DockPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Button x:Name="RefreshConfigButton" Content="Refresh" Click="OnRefreshConfig" MinWidth="80"/>
+                        </StackPanel>
+
+                        <TextBlock x:Name="ProjectHintText" Style="{StaticResource Hint}"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

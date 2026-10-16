@@ -21,6 +21,8 @@ public sealed class GutterMargin : AbstractMargin
     private Brush _foreground = Brushes.Gray;
     private Brush? _currentLineBackground;
     private Brush? _selectionBackground;
+    private Pen? _separatorPen;
+    private Pen? _selectionEdgePen;
     private const double LeftPadding = 12.0;
     private const double RightPadding = 16.0;
 
@@ -33,15 +35,24 @@ public sealed class GutterMargin : AbstractMargin
         _textArea.Caret.PositionChanged += (_, _) => InvalidateVisual();
     }
 
-    public void Configure(FontFamily family, double fontSize, Brush foreground, Brush? currentLine, Brush? selection)
+    public void Configure(FontFamily family, double fontSize, Brush foreground, Brush? currentLine, Brush? selection, Brush? separator, Brush? selectionEdge)
     {
         _typeface = new Typeface(family, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         _emSize = fontSize > 0 ? fontSize : 14.0;
         _foreground = foreground ?? Brushes.Gray;
         _currentLineBackground = currentLine;
         _selectionBackground = selection;
+        _separatorPen = separator is null ? null : MakePen(separator);
+        _selectionEdgePen = selectionEdge is null ? null : MakePen(selectionEdge);
         InvalidateMeasure();
         InvalidateVisual();
+    }
+
+    private static Pen MakePen(Brush brush)
+    {
+        var pen = new Pen(brush, 1.0);
+        pen.Freeze();
+        return pen;
     }
 
     private double PixelsPerDip
@@ -123,6 +134,8 @@ public sealed class GutterMargin : AbstractMargin
         }
 
         double width = ActualWidth;
+        double height = ActualHeight;
+        int lastLine = textView.Document.LineCount;
 
         foreach (var visualLine in textView.VisualLines)
         {
@@ -147,7 +160,26 @@ public sealed class GutterMargin : AbstractMargin
                 dc.DrawRectangle(_selectionBackground, null, new Rect(0, y, width, h));
 
             DrawNumber(dc, lineNumber, y, h);
+
+            // Faint per-line rule between number rows (skipped on the last line).
+            if (_separatorPen is not null && lineNumber < lastLine)
+                dc.DrawLine(_separatorPen, new Point(0, y + h), new Point(width, y + h));
+
+            // Selection block edges: a crisp rule above the first and below the
+            // last selected line so the gutter frames the selection like the code.
+            // Drawn after the per-line rule so they stay crisp at the boundary.
+            if (isSelected && _selectionEdgePen is not null)
+            {
+                if (lineNumber == selStart)
+                    dc.DrawLine(_selectionEdgePen, new Point(0, y), new Point(width, y));
+                if (lineNumber == selEnd)
+                    dc.DrawLine(_selectionEdgePen, new Point(0, y + h), new Point(width, y + h));
+            }
         }
+
+        // Vertical divider between the gutter and the code surface.
+        if (_separatorPen is not null)
+            dc.DrawLine(_separatorPen, new Point(width - 0.5, 0), new Point(width - 0.5, height));
     }
 
     private void DrawNumber(DrawingContext dc, int lineNumber, double y, double height)

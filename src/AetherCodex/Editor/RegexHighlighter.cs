@@ -88,13 +88,19 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
         if (_language.AttributeRegex is { } attrRx)
             ApplyRegex(line, text, excluded, attrRx, "entity.other.attribute-name", Fallback.Attribute);
 
-        // 4. Structural tokens (numbers, keywords, types, constants, builtins, calls).
+        // 4. Structural tokens (numbers, keywords, types, constructors, builtins, calls, application).
         ApplyRegex(line, text, excluded, _language.NumberRegex, "number", Fallback.Number);
         ApplyRegex(line, text, excluded, _language.ConstantRegex, "constant.language", Fallback.Constant);
         ApplyRegex(line, text, excluded, _language.KeywordRegex, "keyword", Fallback.Keyword);
         ApplyRegex(line, text, excluded, _language.TypeRegex, "type", Fallback.Type);
+        if (_language.ConstructorRegex is { } ctorRx)
+            ApplyRegex(line, text, excluded, ctorRx, "type", Fallback.Type);
         ApplyRegex(line, text, excluded, _language.BuiltinRegex, "support.function", Fallback.Function);
+        if (_language.FunctionDefinitionRegex is { } defRx)
+            ApplyRegex(line, text, excluded, defRx, "entity.name.function", Fallback.Function);
         ApplyRegex(line, text, excluded, _language.FunctionCallRegex, "entity.name.function", Fallback.Function);
+        if (_language.FunctionApplicationRegex is { } appRx)
+            ApplyRegex(line, text, excluded, appRx, "entity.name.function", Fallback.Function);
     }
 
     private void ApplyCommentMarkup(DocumentLine line, string text, int from, int length)
@@ -127,6 +133,7 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
             if (m.Length == 0) continue;
             if (IsExcluded(m.Index, m.Length, excluded)) continue;
             Colorize(line, m.Index, m.Length, _theme.Resolve(scope, fallback));
+            excluded.Add((m.Index, m.Length));
         }
     }
 

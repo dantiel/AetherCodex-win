@@ -442,6 +442,32 @@ public sealed class RubyBridge : IDisposable
         return response.ResultDict;
     }
 
+    /// <summary>Effective project config from the Ruby soul — each curated key
+    /// carries its resolved value plus the source layer (env/project/home/bundle/
+    /// preset/default). Null when the daemon is unavailable.</summary>
+    public async Task<JsonObject?> GetConfigAsync()
+    {
+        var response = await SendAsync("config", new JsonObject());
+        ThrowIfError(response);
+        return response.ResultDict;
+    }
+
+    /// <summary>Write one top-level key into a config file and reload in place.
+    /// <paramref name="target"/> is <c>project</c> (default — the local
+    /// <c>.aethercodex</c>/<c>.aether_properties</c>) or <c>home</c> (the global
+    /// personal <c>~/.aethercodex</c>). A null value clears the key.</summary>
+    public async Task<JsonObject?> SetConfigAsync(string key, string? value, string target = "project")
+    {
+        var response = await SendAsync("set_config", new JsonObject
+        {
+            ["key"] = key,
+            ["value"] = value is null ? null : JsonValue.Create(value),
+            ["target"] = target,
+        });
+        ThrowIfError(response);
+        return response.ResultDict;
+    }
+
     public async Task<JsonObject?> InterruptAsync()
     {
         var response = await SendAsync("interrupt", new JsonObject());

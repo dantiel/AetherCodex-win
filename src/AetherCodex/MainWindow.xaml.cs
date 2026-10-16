@@ -13,6 +13,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using AetherCodex.Bridge;
 using AetherCodex.Editor;
+using AetherCodex.Git;
 using AetherCodex.Models;
 using AetherCodex.Panels;
 using ICSharpCode.AvalonEdit.Editing;
@@ -32,17 +33,15 @@ public partial class MainWindow : Window
     private readonly List<OpenDocument> _documents = new();
     private bool _suppressDirty;
     private bool _syncingLanguage;
-    private RegexHighlighter? _highlighter;
+    private DocumentColorizingTransformer? _highlighter;
     private GutterMargin? _gutter;
     private bool _sidebarOpen = true;
+    private string _gitRoot = "";
     private bool _pythiaOpen = true;
     private readonly MenuItem _themeMenu = new() { Header = "Theme" };
     private SearchInProjectWindow? _searchWindow;
+    private SearchPanel? _searchPanel;
     private bool _linkExplorer;
-    private readonly List<(string Path, string Glyph)> _quickFiles = new();
-    private string _quickRoot = "";
-    private bool _quickScanned;
-    private sealed record QuickFileMatch(string Glyph, string Display, string Path);
 
     // ── Hermetic chord table — window-scoped commands with default gestures ──
     private static readonly RoutedCommand NewFileCommand = new(nameof(NewFileCommand), typeof(MainWindow));
@@ -52,6 +51,11 @@ public partial class MainWindow : Window
     private static readonly RoutedCommand SaveAsCommand = new(nameof(SaveAsCommand), typeof(MainWindow));
     private static readonly RoutedCommand GoToFileCommand = new(nameof(GoToFileCommand), typeof(MainWindow));
     private static readonly RoutedCommand FindInProjectCommand = new(nameof(FindInProjectCommand), typeof(MainWindow));
+    private static readonly RoutedCommand FindInFileCommand = new(nameof(FindInFileCommand), typeof(MainWindow));
+    private static readonly RoutedCommand FindInFolderCommand = new(nameof(FindInFolderCommand), typeof(MainWindow));
+    private static readonly RoutedCommand FindNextCommand = new(nameof(FindNextCommand), typeof(MainWindow));
+    private static readonly RoutedCommand FindPreviousCommand = new(nameof(FindPreviousCommand), typeof(MainWindow));
+    private static readonly RoutedCommand UseSelectionForFindCommand = new(nameof(UseSelectionForFindCommand), typeof(MainWindow));
     private static readonly RoutedCommand CloseFileCommand = new(nameof(CloseFileCommand), typeof(MainWindow));
     private static readonly RoutedCommand ToggleSidebarCommand = new(nameof(ToggleSidebarCommand), typeof(MainWindow));
     private static readonly RoutedCommand TogglePythiaCommand = new(nameof(TogglePythiaCommand), typeof(MainWindow));
@@ -85,11 +89,17 @@ public partial class MainWindow : Window
         UpdateWindowTitle();
         RailSymbolText.Text = _settings.RailSymbol;
         UpdateLanguageCombo();
+        ExplorerToggle.IsChecked = true; // establish initial sidebar mode (Files) after both toggles exist
 
         OverflowButton.ContextMenu = BuildOverflowMenu();
 
-        // Incremental search (Ctrl+F) — AvalonEdit's built-in search panel.
-        SearchPanel.Install(Editor.TextArea);
+        // Incremental search (Alt+S forward / Alt+Shift+S backward) — AvalonEdit's built-in
+        // search panel. Ctrl+F is reclaimed for the full find-in-file search below, so the
+        // panel's default Ctrl+F keybinding is removed.
+        _searchPanel = SearchPanel.Install(Editor.TextArea);
+        foreach (var binding in Editor.TextArea.InputBindings.OfType<KeyBinding>()
+                     .Where(b => b.Command == ApplicationCommands.Find).ToList())
+            Editor.TextArea.InputBindings.Remove(binding);
 
         // TextMate-style multi-cursor (Ctrl+W / Ctrl+Shift+W grow cursors).
         _multi = new MultiCursorController(Editor);
@@ -105,6 +115,9 @@ public partial class MainWindow : Window
         Browser.DeleteRequested += OnBrowserDelete;
         Browser.DuplicateRequested += OnBrowserDuplicate;
         Browser.NewItemRequested += OnBrowserNewItem;
+
+        GitPanel.DiffRequested += OpenDiffAsync;
+        GitPanel.FileOpenRequested += path => _ = OpenFileAsync(path);
 
         // The Pythia header hosts the window caption buttons while visible;
         // route its requests back to the window-level handlers.
@@ -145,7 +158,12 @@ public partial class MainWindow : Window
         Bind(SaveCommand, new KeyGesture(Key.S, ctrl), (s, e) => OnSave(s, e));
         Bind(SaveAsCommand, new KeyGesture(Key.S, ctrl | ModifierKeys.Shift), (s, e) => OnSaveAs(s, e));
         Bind(GoToFileCommand, new KeyGesture(Key.P, ctrl), (s, e) => OnGoToFile(s, e));
+        Bind(FindInFileCommand, new KeyGesture(Key.F, ctrl), (s, e) => OnFindInFile(s, e));
         Bind(FindInProjectCommand, new KeyGesture(Key.F, ctrl | ModifierKeys.Shift), (s, e) => OnFindInProject(s, e));
+        Bind(FindInFolderCommand, new KeyGesture(Key.F, ctrl | ModifierKeys.Alt), (s, e) => OnFindInFolder(s, e));
+        Bind(FindNextCommand, new KeyGesture(Key.S, ModifierKeys.Alt), (s, e) => OnFindNext(s, e));
+        Bind(FindPreviousCommand, new KeyGesture(Key.S, ModifierKeys.Alt | ModifierKeys.Shift), (s, e) => OnFindPrevious(s, e));
+        Bind(UseSelectionForFindCommand, new KeyGesture(Key.E, ModifierKeys.Alt), (s, e) => OnUseSelectionForFind(s, e));
         Bind(CloseFileCommand, new KeyGesture(Key.W, ctrl), (s, e) => OnCloseFile(s, e));
         Bind(ToggleSidebarCommand, new KeyGesture(Key.B, ctrl), (s, e) => OnToggleSidebar(s, e));
         Bind(TogglePythiaCommand, new KeyGesture(Key.J, ctrl), (s, e) => OnTogglePythia(s, e));
@@ -195,7 +213,10 @@ public partial class MainWindow : Window
         Add("Open Folder…", OnOpenFolder, "Ctrl+Shift+O");
         Add("Open File…", OnOpenFile, "Ctrl+O");
         Add("Go to File…", OnGoToFile, "Ctrl+P");
+        Add("Find in Current File…", OnFindInFile, "Ctrl+F");
         Add("Find in Project…", OnFindInProject, "Ctrl+Shift+F");
+        Add("Find in Folder…", OnFindInFolder, "Ctrl+Alt+F");
+        Add("Use Selection for Find", OnUseSelectionForFind, "Alt+E");
         var linkExplorer = Add("Link Explorer to Active File", OnToggleLinkExplorer);
         linkExplorer.IsCheckable = true;
         linkExplorer.IsChecked = _linkExplorer;
@@ -236,6 +257,24 @@ public partial class MainWindow : Window
             Browser.Reveal(doc.Path);
     }
 
+    /// <summary>Keep exactly one sidebar mode (Explorer / Git) engaged and swap the surface.</summary>
+    private void OnSidebarModeChanged(object sender, RoutedEventArgs e)
+    {
+        bool isExplorer = ReferenceEquals(sender, ExplorerToggle);
+        var toggle = isExplorer ? ExplorerToggle : GitToggle;
+        var other = isExplorer ? GitToggle : ExplorerToggle;
+
+        if (toggle.IsChecked == true)
+            other.IsChecked = false;
+        else if (other.IsChecked != true)
+            toggle.IsChecked = true; // don't allow unchecking the active toggle
+
+        bool git = GitToggle.IsChecked == true;
+        Browser.Visibility = git ? Visibility.Collapsed : Visibility.Visible;
+        GitPanel.Visibility = git ? Visibility.Visible : Visibility.Collapsed;
+        if (git) GitPanel.Refresh();
+    }
+
     private void ApplyTheme(SyntaxTheme theme)
     {
         _theme = theme;
@@ -262,7 +301,9 @@ public partial class MainWindow : Window
         var transformers = Editor.TextArea.TextView.LineTransformers;
         if (_highlighter is not null)
             transformers.Remove(_highlighter);
-        _highlighter = new RegexHighlighter(_theme, _language);
+        _highlighter = _language.Key == "diff"
+            ? new DiffHighlighter(_theme)
+            : new RegexHighlighter(_theme, _language);
         transformers.Add(_highlighter);
         Editor.TextArea.TextView.Redraw();
     }
@@ -304,12 +345,18 @@ public partial class MainWindow : Window
                 Editor.TextArea.LeftMargins.Insert(0, _gutter);
 
             var ui = ThemePalette.Build(_theme);
+            var separator = _theme.RulerSeparator is { } rs
+                ? new SolidColorBrush(rs)
+                : new SolidColorBrush(ui.Border);
+            var selectionEdge = new SolidColorBrush(ThemePalette.Mix(_theme.Selection, ui.Foreground, 0.35));
             _gutter.Configure(
                 Editor.FontFamily,
                 Editor.FontSize,
                 new SolidColorBrush(ui.MutedForeground),
                 new SolidColorBrush(_theme.LineHighlight),
-                new SolidColorBrush(_theme.Selection));
+                new SolidColorBrush(_theme.Selection),
+                separator,
+                selectionEdge);
         }
         else if (_gutter is not null)
         {
@@ -392,15 +439,16 @@ public partial class MainWindow : Window
 
     private async void OnShowSettings(object sender, RoutedEventArgs e)
     {
-        var dialog = new SettingsWindow(_settings, _themes.Select(t => t.Name).ToList(), _theme.WindowOpacity) { Owner = this };
+        var dialog = new SettingsWindow(
+            _settings,
+            _themes.Select(t => t.Name).ToList(),
+            _theme.WindowOpacity,
+            _bridge,
+            Directory.Exists(_projectRoot) ? _projectRoot : null,
+            OpenConfigFile) { Owner = this };
         if (dialog.ShowDialog() != true) return;
 
         bool themeChanged = !string.Equals(_settings.Theme, dialog.SelectedTheme, StringComparison.OrdinalIgnoreCase);
-        bool oracleChanged =
-            !string.Equals(_settings.OracleProvider, dialog.OracleProviderKey, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(_settings.OracleModel, dialog.OracleModelValue, StringComparison.Ordinal) ||
-            !string.Equals(_settings.OracleApiKey, dialog.OracleApiKeyValue, StringComparison.Ordinal) ||
-            !string.Equals(_settings.OracleApiUrl, dialog.OracleApiUrlValue, StringComparison.Ordinal);
 
         _settings.Theme = dialog.SelectedTheme;
         _settings.FontSize = dialog.FontSizeValue;
@@ -442,32 +490,42 @@ public partial class MainWindow : Window
         RailSymbolText.Text = _settings.RailSymbol;
         _settings.Save();
 
-        // Hand the credentials to the Ruby daemon via the highest-priority config
-        // channel (AETHER_* env vars). Restart only if credentials actually changed
-        // and a daemon is already live — otherwise the next start picks them up.
-        ApplyOracleEnvironment();
-        if (oracleChanged && _bridge.IsRunning)
+        // Persist only the personal AI-provider keys the user actually changed to
+        // `~/.aethercodex` (the daemon's global default layer); project values in
+        // `<root>/.aethercodex` override them. An auto-filled default is not an
+        // edit, so a plain theme tweak never clobbers a real home value.
+        var oracleChanges = dialog.OracleChanges();
+        if (oracleChanges.Count > 0)
         {
-            try { await _bridge.RestartAsync(); }
-            catch { /* non-fatal: credentials still apply on the next daemon start */ }
+            try
+            {
+                foreach (var (key, value) in oracleChanges)
+                    await _bridge.SetConfigAsync(key, value, "home");
+            }
+            catch { /* non-fatal: defaults still apply on the next daemon start */ }
         }
     }
 
-    private void ApplyOracleEnvironment()
+    /// <summary>Open (or materialise) a config file in the editor — the
+    /// "Open .aethercodex" action from the Settings window.</summary>
+    private void OpenConfigFile(string path)
     {
-        SetOracleEnv("AETHER_MODEL", _settings.OracleModel);
-        SetOracleEnv("AETHER_FAST_MODEL", _settings.OracleFastModel);
-        SetOracleEnv("AETHER_API_TYPE", _settings.OracleApiType);
-        SetOracleEnv("AETHER_API_URL", _settings.OracleApiUrl);
-        SetOracleEnv("AETHER_API_KEY", _settings.OracleApiKey);
-    }
-
-    private static void SetOracleEnv(string name, string value)
-    {
-        Environment.SetEnvironmentVariable(
-            name,
-            string.IsNullOrWhiteSpace(value) ? null : value,
-            EnvironmentVariableTarget.Process);
+        try
+        {
+            if (!File.Exists(path))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path,
+                    "# ÆtherCodex project configuration\n" +
+                    "# Keys here override your personal defaults (~/.aethercodex) and the\n" +
+                    "# built-in defaults. See `aether config --default` for the full reference.\n");
+            }
+            _ = OpenFileAsync(path);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Open config", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private async Task StartDaemonSafeAsync()
@@ -533,6 +591,26 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Open a working-tree change's unified diff as a read-only tab in the main view.</summary>
+    private void OpenDiffAsync(string path)
+    {
+        if (_gitRoot.Length == 0) return;
+        var change = GitService.GetStatus(_gitRoot).FirstOrDefault(c => c.Path == path);
+        if (change is null) return;
+
+        var diff = GitService.GetDiff(_gitRoot, change);
+        var doc = new OpenDocument
+        {
+            IsDiff = true,
+            IsReadOnly = true,
+            Language = "Diff",
+            Text = diff,
+            DiffTitle = change.OldPath.Length > 0 ? $"{change.Path} ← {change.OldPath}" : change.Path,
+        };
+        _documents.Add(doc);
+        ActivateDocument(doc);
+    }
+
     /// <summary>Make <paramref name="doc"/> the active tab and render it into the editor surface.</summary>
     private void ActivateDocument(OpenDocument doc)
     {
@@ -591,7 +669,8 @@ public partial class MainWindow : Window
             else
             {
                 Editor.Text = doc.Text;
-                _language = Languages.FromPath(doc.Path);
+                _language = doc.IsDiff ? Languages.FromKey("diff") : Languages.FromPath(doc.Path);
+                Editor.IsReadOnly = doc.IsReadOnly;
                 ReattachHighlighter();
                 Editor.ScrollToHome();
 
@@ -658,6 +737,7 @@ public partial class MainWindow : Window
         CommitActiveDocument();
 
         var doc = _activeDoc;
+        if (doc.IsDiff) return;
         if (doc.Path.Length == 0) { OnSaveAs(sender, e); return; }
 
         try
@@ -908,135 +988,71 @@ public partial class MainWindow : Window
 
     private void OnGoToFile(object sender, RoutedEventArgs e)
     {
-        if (QuickSearch.Visibility == Visibility.Visible)
-        {
-            HideQuickSearch();
-            return;
-        }
-        ShowQuickSearch();
+        var dialog = new GoToFileWindow(ProjectRoot, CurrentFile) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.SelectedPath is { } path)
+            _ = OpenFileAsync(path);
     }
 
-    private void ShowQuickSearch()
+    /// <summary>Open the full find window with a given scope: 0 = project, 1 = current file,
+    /// 2 = folder. Reuses a single modeless instance, re-pointing its scope each time.</summary>
+    private void OpenFind(int scope)
     {
-        var root = ProjectRoot;
-        if (!_quickScanned || !string.Equals(_quickRoot, root, StringComparison.OrdinalIgnoreCase))
-            ScanQuickFiles(root);
+        string initial = CurrentSelectionOrWord();
 
-        QuickSearch.Visibility = Visibility.Visible;
-        QuickQuery.Text = "";
-        QuickHint.Visibility = Visibility.Visible;
-        RefreshQuickResults();
-        QuickQuery.Focus();
-    }
-
-    private void HideQuickSearch()
-    {
-        QuickSearch.Visibility = Visibility.Collapsed;
-        Editor.Focus();
-    }
-
-    private void ScanQuickFiles(string root)
-    {
-        _quickFiles.Clear();
-        _quickRoot = root;
-        _quickScanned = true;
-        if (!Directory.Exists(root)) return;
-        try
-        {
-            foreach (var file in ProjectSearch.EnumerateFiles(root, new[] { "*" }))
-                _quickFiles.Add((file, QuickGlyph(file)));
-        }
-        catch { /* unreadable tree */ }
-    }
-
-    private void RefreshQuickResults()
-    {
-        var q = QuickQuery.Text.Trim();
-        IEnumerable<(string Path, string Glyph)> matches = _quickFiles;
-        if (q.Length > 0)
-        {
-            var parts = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            matches = _quickFiles.Where(f =>
-                parts.All(p => f.Path.Contains(p, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var items = matches
-            .OrderBy(f => f.Path.Length)
-            .Take(200)
-            .Select(f => new QuickFileMatch(f.Glyph, Path.GetRelativePath(_quickRoot, f.Path), f.Path))
-            .ToList();
-        QuickResults.ItemsSource = items;
-        if (QuickResults.Items.Count > 0) QuickResults.SelectedIndex = 0;
-    }
-
-    private void OnQuickQueryChanged(object sender, TextChangedEventArgs e)
-    {
-        QuickHint.Visibility = QuickQuery.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        RefreshQuickResults();
-    }
-
-    private void OnQuickQueryKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape) { HideQuickSearch(); return; }
-        if (e.Key == Key.Enter) { AcceptQuickSelection(); return; }
-        if (e.Key == Key.Down && QuickResults.Items.Count > 0)
-            QuickResults.SelectedIndex = Math.Min(QuickResults.SelectedIndex + 1, QuickResults.Items.Count - 1);
-        else if (e.Key == Key.Up && QuickResults.Items.Count > 0)
-            QuickResults.SelectedIndex = Math.Max(QuickResults.SelectedIndex - 1, 0);
-    }
-
-    private void OnQuickResultDoubleClick(object sender, MouseButtonEventArgs e) => AcceptQuickSelection();
-
-    private void AcceptQuickSelection()
-    {
-        if (QuickResults.SelectedItem is QuickFileMatch match)
-        {
-            HideQuickSearch();
-            _ = OpenFileAsync(match.Path);
-        }
-    }
-
-    private static string QuickGlyph(string path) => Path.GetExtension(path).ToLowerInvariant() switch
-    {
-        ".rb" => "◆",
-        ".cs" => "♯",
-        ".swift" => "🕊",
-        ".py" => "🐍",
-        ".js" or ".ts" or ".jsx" or ".tsx" => "§",
-        ".json" or ".yml" or ".yaml" => "≡",
-        ".md" => "✎",
-        ".haml" => "◇",
-        ".sass" or ".scss" => "◇",
-        ".html" or ".css" => "◇",
-        _ => "·",
-    };
-
-    private void OnFindInProject(object sender, RoutedEventArgs e)
-    {
         if (_searchWindow is { IsVisible: true })
         {
+            _searchWindow.SetScope(scope);
+            _searchWindow.SetQuery(initial);
             _searchWindow.Activate();
             return;
         }
 
-        string initial = "";
-        var ta = Editor.TextArea;
-        if (ta.Selection.Length > 0)
-        {
-            initial = Editor.Document.GetText(ta.Selection.SurroundingSegment.Offset, ta.Selection.Length);
-        }
-        else
-        {
-            var line = Editor.Document.GetLineByNumber(ta.Caret.Line);
-            var text = Editor.Document.GetText(line.Offset, line.Length);
-            initial = WordAtCaret(text, ta.Caret.Column - 1);
-        }
-
-        var dialog = new SearchInProjectWindow(ProjectRoot, CurrentFile, initial) { Owner = this };
+        var dialog = new SearchInProjectWindow(ProjectRoot, CurrentFile, initial, scope) { Owner = this };
         dialog.ResultChosen += row => _ = OpenFileAtAsync(row.File, row.Line, row.Column, row.Length);
         dialog.Closed += (_, _) => _searchWindow = null;
         _searchWindow = dialog;
         dialog.Show();
+    }
+
+    private void OnFindInFile(object sender, RoutedEventArgs e) => OpenFind(scope: 1);
+
+    private void OnFindInProject(object sender, RoutedEventArgs e) => OpenFind(scope: 0);
+
+    private void OnFindInFolder(object sender, RoutedEventArgs e) => OpenFind(scope: 2);
+
+    private void OnFindNext(object sender, RoutedEventArgs e) => _searchPanel?.FindNext();
+
+    private void OnFindPrevious(object sender, RoutedEventArgs e) => _searchPanel?.FindPrevious();
+
+    private void OnUseSelectionForFind(object sender, RoutedEventArgs e)
+    {
+        string selection = CurrentSelectionOrWord();
+        if (selection.Length == 0) return;
+
+        // The "normal" (full) search window — not the incremental quick search.
+        if (_searchWindow is { IsVisible: true })
+        {
+            _searchWindow.SetQuery(selection);
+            _searchWindow.Activate();
+            return;
+        }
+
+        var dialog = new SearchInProjectWindow(ProjectRoot, CurrentFile, selection, scope: 1) { Owner = this };
+        dialog.ResultChosen += row => _ = OpenFileAtAsync(row.File, row.Line, row.Column, row.Length);
+        dialog.Closed += (_, _) => _searchWindow = null;
+        _searchWindow = dialog;
+        dialog.Show();
+    }
+
+    private string CurrentSelectionOrWord()
+    {
+        var ta = Editor.TextArea;
+        if (ta.Selection.Length > 0)
+            return Editor.Document.GetText(ta.Selection.SurroundingSegment.Offset, ta.Selection.Length);
+
+        var line = Editor.Document.GetLineByNumber(ta.Caret.Line);
+        var text = Editor.Document.GetText(line.Offset, line.Length);
+        return WordAtCaret(text, ta.Caret.Column - 1);
     }
 
     private async Task OpenFileAtAsync(string path, int line, int column, int length)
@@ -1519,6 +1535,8 @@ public partial class MainWindow : Window
         _settings.LastDirectory = directory;
         ReloadSyntaxOverrides(directory);
         Browser.SetRoot(directory);
+        _gitRoot = GitService.FindRoot(directory);
+        GitPanel.SetRepository(directory);
         UpdateWindowTitle();
         Title = WindowTitleText.Text;
         UpdateFilePath();

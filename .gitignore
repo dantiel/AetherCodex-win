@@ -17,6 +17,7 @@ mnemosyne.db
 
 # Transient build/daemon artifacts (regenerated on every run).
 build_out.txt
+build_err.txt
 daemon_err.txt
 _pythia.diff
 Untitled.rtf

@@ -75,13 +75,28 @@ public partial class FileBrowser : UserControl
         try { current.IsSelected = true; }
         finally { _suppressSelection = false; }
 
-        // Container generation is deferred until after the layout pass — scroll once realised.
+        // Container generation is deferred until after the layout pass. For a deeply
+        // nested node, `ContainerFromItem` on the TreeView only knows top-level items,
+        // so walk the realised container tree to find the leaf and scroll it into view.
         var captured = current;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
         {
-            if (Tree.ItemContainerGenerator.ContainerFromItem(captured) is TreeViewItem tvi)
+            Tree.UpdateLayout();
+            if (FindContainer(Tree.ItemContainerGenerator, captured) is { } tvi)
                 tvi.BringIntoView();
         }));
+    }
+
+    /// <summary>Recursively locate the realised <see cref="TreeViewItem"/> for a data item.</summary>
+    private static TreeViewItem? FindContainer(ItemContainerGenerator generator, object target)
+    {
+        for (int i = 0; i < generator.Items.Count; i++)
+        {
+            if (generator.ContainerFromIndex(i) is not TreeViewItem tvi) continue;
+            if (ReferenceEquals(tvi.DataContext, target)) return tvi;
+            if (FindContainer(tvi.ItemContainerGenerator, target) is { } nested) return nested;
+        }
+        return null;
     }
 
     /// <summary>Reload a (loaded) directory node by path so its children reflect the disk.</summary>

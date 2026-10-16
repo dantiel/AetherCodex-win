@@ -27,7 +27,7 @@ public partial class SearchInProjectWindow : Window
     private bool _suppress;
     private bool _initialized;
 
-    public SearchInProjectWindow(string projectRoot, string? currentFile, string initialQuery = "")
+    public SearchInProjectWindow(string projectRoot, string? currentFile, string initialQuery = "", int scope = 0)
     {
         InitializeComponent();
         _root = projectRoot;
@@ -41,14 +41,33 @@ public partial class SearchInProjectWindow : Window
         RestoreLastState();
         if (initialQuery.Length > 0)
             Query.Text = initialQuery;
+        SetScope(scope);
 
         Loaded += (_, _) =>
         {
             Query.Focus();
             PopulateHistory();
+            if (scope == 2 && string.IsNullOrEmpty(_folderScope))
+                PromptForFolder();
         };
 
         _initialized = true;
+    }
+
+    /// <summary>Switch the scope combo: 0 = project, 1 = current file, 2 = folder.</summary>
+    public void SetScope(int scope)
+    {
+        if (scope < 0 || scope > 2) return;
+        ScopeBox.SelectedIndex = scope;
+    }
+
+    /// <summary>Replace the query text and focus it (Alt+E — use selection for find).</summary>
+    public void SetQuery(string query)
+    {
+        Query.Text = query;
+        Query.Focus();
+        if (Query.Template.FindName("PART_EditableTextBox", Query) is TextBox box)
+            box.CaretIndex = box.Text.Length;
     }
 
     /// <summary>Rehydrate the previous search run — query, options and result list.</summary>
@@ -112,15 +131,18 @@ public partial class SearchInProjectWindow : Window
     {
         if (!_initialized || _suppress) return;
         if (ScopeBox.SelectedIndex == 2)
-        {
-            _suppress = true;
-            var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Search folder" };
-            if (dialog.ShowDialog() == true)
-                _folderScope = dialog.FolderName;
-            else
-                ScopeBox.SelectedIndex = 0;
-            _suppress = false;
-        }
+            PromptForFolder();
+    }
+
+    private void PromptForFolder()
+    {
+        _suppress = true;
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Search folder" };
+        if (dialog.ShowDialog() == true)
+            _folderScope = dialog.FolderName;
+        else if (ScopeBox.SelectedIndex == 2)
+            ScopeBox.SelectedIndex = 0;
+        _suppress = false;
     }
 
     private static IReadOnlyList<string> ParseFileTypes(string input)

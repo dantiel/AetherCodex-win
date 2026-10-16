@@ -72,6 +72,7 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="48"/>
+                    <RowDefinition Height="36"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -93,7 +94,16 @@
                     </DockPanel>
                 </Border>
 
-                <panels:FileBrowser x:Name="Browser" Grid.Row="1"/>
+                <!-- Explorer / Git view toggle -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="10,0" VerticalAlignment="Center">
+                    <ToggleButton x:Name="ExplorerToggle" Content="Files" Style="{StaticResource ToolButton}"
+                                  Checked="OnSidebarModeChanged" Unchecked="OnSidebarModeChanged"/>
+                    <ToggleButton x:Name="GitToggle" Content="Git" Style="{StaticResource ToolButton}"
+                                  Margin="4,0,0,0" Checked="OnSidebarModeChanged" Unchecked="OnSidebarModeChanged"/>
+                </StackPanel>
+
+                <panels:FileBrowser x:Name="Browser" Grid.Row="2"/>
+                <panels:GitPanel x:Name="GitPanel" Grid.Row="2" Visibility="Collapsed"/>
             </Grid>
         </Border>
 
@@ -153,46 +163,6 @@
                         <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
                     </ScrollViewer>
                 </DockPanel>
-            </Border>
-
-            <!-- Quick search (Go to File) overlay — bottom-docked, TextMate-style -->
-            <Border x:Name="QuickSearch" DockPanel.Dock="Bottom" Visibility="Collapsed"
-                    Background="{DynamicResource PanelBackground}" BorderBrush="{DynamicResource Border}"
-                    BorderThickness="0,1,0,0">
-                <Grid Margin="10,10,10,8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <Border Grid.Row="0" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
-                            Background="{DynamicResource EditorBackground}">
-                        <Grid>
-                            <TextBox x:Name="QuickQuery" Padding="6,5" FontSize="13" BorderThickness="0"
-                                     Background="Transparent" Foreground="{DynamicResource Foreground}"
-                                     CaretBrush="{DynamicResource Foreground}"
-                                     PreviewKeyDown="OnQuickQueryKeyDown" TextChanged="OnQuickQueryChanged"/>
-                            <TextBlock x:Name="QuickHint" Text="Go to file…" Margin="8,0,0,0"
-                                       VerticalAlignment="Center" Foreground="{DynamicResource MutedForeground}"
-                                       IsHitTestVisible="False"/>
-                        </Grid>
-                    </Border>
-                    <ListBox x:Name="QuickResults" Grid.Row="1" MaxHeight="240" Margin="0,8,0,0"
-                             BorderThickness="0" Background="Transparent"
-                             MouseDoubleClick="OnQuickResultDoubleClick"
-                             HorizontalContentAlignment="Stretch"
-                             VirtualizingPanel.IsVirtualizing="True"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Glyph}" Width="18" Foreground="{DynamicResource Accent}"/>
-                                    <TextBlock Text="{Binding Display}" Foreground="{DynamicResource Foreground}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Grid>
             </Border>
 
             <Grid>

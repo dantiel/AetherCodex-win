@@ -1,6 +1,7 @@
 <UserControl x:Class="AetherCodex.Editor.RichTextEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:editor="clr-namespace:AetherCodex.Editor">
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{DynamicResource ChromeBackground}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
@@ -45,6 +46,8 @@
                 <Button Content="Clear" ToolTip="Clear formatting" Style="{StaticResource IconButton}" Click="OnClearFormatting"/>
             </WrapPanel>
         </Border>
+
+        <editor:RulerControl x:Name="Ruler" DockPanel.Dock="Top"/>
 
         <RichTextBox x:Name="RichText"
                      AcceptsTab="True"

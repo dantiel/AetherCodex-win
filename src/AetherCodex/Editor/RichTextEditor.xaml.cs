@@ -50,6 +50,7 @@ public partial class RichTextEditor : UserControl
         HighlightBox.ItemsSource = ColorNames;
 
         RichText.Document = new FlowDocument();
+        Ruler.Attach(RichText);
         RichText.SelectionChanged += (_, _) => SyncToolbarState();
         RichText.TextChanged += (_, _) => { SyncToolbarState(); DocumentChanged?.Invoke(this, EventArgs.Empty); };
         SourceBox.TextChanged += (_, _) =>
@@ -110,6 +111,7 @@ public partial class RichTextEditor : UserControl
             _loadingSource = false;
             RichText.Visibility = Visibility.Collapsed;
             SourceBox.Visibility = Visibility.Visible;
+            Ruler.Visibility = Visibility.Collapsed;
             FormatBar.IsEnabled = false;
         }
         else
@@ -119,6 +121,7 @@ public partial class RichTextEditor : UserControl
             RichText.Document = MarkdownRenderer.Render(markdown, _theme ?? new SyntaxTheme());
             SourceBox.Visibility = Visibility.Collapsed;
             RichText.Visibility = Visibility.Visible;
+            Ruler.Visibility = Visibility.Visible;
             FormatBar.IsEnabled = true;
             SyncToolbarState();
         }
@@ -137,6 +140,13 @@ public partial class RichTextEditor : UserControl
         RichText.SelectionBrush = new SolidColorBrush(theme.Selection);
         RichText.SelectionOpacity = 0.85;
         RichText.CaretBrush = new SolidColorBrush(theme.PythiaAccent);
+
+        var ui = ThemePalette.Build(theme);
+        Ruler.Configure(
+            theme.RulerBackground ?? ui.ChromeBackground,
+            theme.RulerSeparator ?? ui.Border,
+            theme.RulerForeground ?? ui.MutedForeground,
+            ui.AccentBright);
     }
 
     // ── Formatting commands ────────────────────────────────────────────────────

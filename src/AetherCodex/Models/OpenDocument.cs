@@ -18,8 +18,17 @@ public sealed class OpenDocument
     public string Markdown { get; set; } = "";
     public bool Dirty { get; set; }
 
+    /// <summary>Read-only surface (diff views); the editor disables edits.</summary>
+    public bool IsReadOnly { get; set; }
+    /// <summary>A git diff buffer, not a real file on disk — never saved.</summary>
+    public bool IsDiff { get; set; }
+    /// <summary>Tab caption for diff buffers.</summary>
+    public string DiffTitle { get; set; } = "";
+
     public bool IsMarkdown => Language == "Markdown";
 
     public string DisplayName =>
-        (Dirty ? "● " : "") + (Path.Length == 0 ? "untitled" : System.IO.Path.GetFileName(Path));
+        IsDiff
+            ? "⇄ " + DiffTitle
+            : (Dirty ? "● " : "") + (Path.Length == 0 ? "untitled" : System.IO.Path.GetFileName(Path));
 }

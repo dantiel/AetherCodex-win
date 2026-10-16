@@ -6,6 +6,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/). The version
 number lives in `src/AetherCodex/AetherCodex.csproj` (`<Version>`).
 
+## [0.3.0] — 2026-10-16 — Third Alpha
+
+The body learns to see: a Git view in the file browser with unified-diff
+tabs, a rich-text ruler, a fully-drawn line-number gutter, HAML + Sass
+highlighting, `.aether-properties` syntax mapping, incremental search, and
+a scope-aware Find in Project.
+
+### Added
+
+- **Git view** — Files/Git mode toggle in the file browser; changed-files
+  list backed by `GitService`, with unified diffs opened as read-only tabs.
+- **Rich-text ruler** — centimeter scale with draggable first-line / hanging /
+  right indentation markers over the rich surface.
+- **Line-number gutter finishing** — per-line separators, a vertical divider to
+  the code, and top/bottom edge lines framing the selected block.
+- **HAML + Sass highlighting** — `.haml`, `.hamlc`, `.sass` in the language
+  registry, with Sass `@mixin`/`@if`/`@media` directive colouring.
+- **`.aether-properties`** — editor-level project config (`ProjectConfig.cs`)
+  for per-project syntax overrides (e.g. `.umghaml → haml`, `.umgss → sass`).
+- **Incremental search** — `Alt+S` / `Alt+Shift+S` for next/previous match.
+- **Scope-aware Find in Project** — `Ctrl+F` (current file), `Ctrl+Shift+F`
+  (project), `Ctrl+Alt+F` (folder); modeless and remembers last results.
+- **`Alt+E`** — put the current selection into the find query.
+- **Link Explorer to Active File** — expand + scroll to the active file on
+  open and tab switch.
+
+### Changed
+
+- Go to File (`Ctrl+P`) restored to a floating modal window.
+- Find in Project is modeless and persists its last result set.
+
 ## [0.2.0] — 2026-10-15 — Second Alpha
 
 The body gains finesse: a live font-size zoom with a floating HUD, markup and

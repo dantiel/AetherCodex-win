@@ -20,6 +20,12 @@ public sealed class LanguageDefinition
     public string? TagPattern { get; init; }
     /// <summary>Optional regex for markup attributes / classes / ids.</summary>
     public string? AttributePattern { get; init; }
+    /// <summary>Optional regex for type/data constructors (Haskell: any CapitalizedIdentifier).</summary>
+    public string? ConstructorPattern { get; init; }
+    /// <summary>Optional regex for bare function application (Haskell: <c>func arg</c>, no brackets).</summary>
+    public string? FunctionApplicationPattern { get; init; }
+    /// <summary>Optional regex for a binding being defined (Haskell: identifier before <c>::</c>).</summary>
+    public string? FunctionDefinitionPattern { get; init; }
 
     private Regex? _keyword;
     private Regex? _type;
@@ -30,6 +36,9 @@ public sealed class LanguageDefinition
     private Regex? _comment;
     private Regex? _tag;
     private Regex? _attribute;
+    private Regex? _constructor;
+    private Regex? _functionApplication;
+    private Regex? _functionDefinition;
 
     public Regex KeywordRegex => _keyword ??= BuildAlternation(Keywords, "keyword");
     public Regex TypeRegex => _type ??= BuildAlternation(Types, "type");
@@ -40,6 +49,9 @@ public sealed class LanguageDefinition
     public Regex CommentRegex => _comment ??= BuildCommentRegex();
     public Regex? TagRegex => _tag ??= CompilePattern(TagPattern);
     public Regex? AttributeRegex => _attribute ??= CompilePattern(AttributePattern);
+    public Regex? ConstructorRegex => _constructor ??= CompilePattern(ConstructorPattern);
+    public Regex? FunctionApplicationRegex => _functionApplication ??= CompilePattern(FunctionApplicationPattern);
+    public Regex? FunctionDefinitionRegex => _functionDefinition ??= CompilePattern(FunctionDefinitionPattern);
 
     private static Regex BuildAlternation(string[] words, string _)
     {
@@ -239,6 +251,14 @@ public static class Languages
             Types = "Int Integer Float Double Bool Char String Maybe Either IO Show Eq Ord Read Enum Bounded Num Real Integral Fractional Floating Monad Functor Applicative Traversable Foldable Semigroup Monoid Map Set Vector Text ByteString Word".Split(' '),
             Constants = "True False Nothing".Split(' '),
             Builtins = "map filter foldl foldr head tail init last length reverse concat take drop zip fst snd print putStrLn getLine return fmap pure liftA2 id const error undefined otherwise not elem lookup".Split(' '),
+            ConstructorPattern = @"(?<![A-Za-z0-9_'])[A-Z][A-Za-z0-9_']*(?![A-Za-z0-9_'])",
+            FunctionDefinitionPattern = @"(?<![A-Za-z0-9_'])[a-z_][A-Za-z0-9_']*(?=\s*::)",
+            FunctionApplicationPattern = @"(?<![\w']\s)\b[a-z_][A-Za-z0-9_']*(?=\s+(?!(?:in|then|else|of|where|do|let|import|as|qualified|deriving)\b)[A-Za-z_][A-Za-z0-9_']*)",
+        },
+        new LanguageDefinition
+        {
+            Key = "diff", Name = "Diff",
+            Extensions = new[] { ".diff", ".patch" },
         },
         new LanguageDefinition
         {
