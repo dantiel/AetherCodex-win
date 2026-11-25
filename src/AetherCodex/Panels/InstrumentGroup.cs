@@ -19,6 +19,10 @@ public sealed class InstrumentGroup : Border
     private UiColors _ui;
     private bool _collapsed;
 
+    /// <summary>Raised when the last card is dismissed, so the host can drop the
+    /// now-empty group from the message flow.</summary>
+    public event Action<InstrumentGroup>? Emptied;
+
     public InstrumentGroup(SyntaxTheme theme, UiColors ui)
     {
         _ui = ui;
@@ -65,7 +69,16 @@ public sealed class InstrumentGroup : Border
     public void Add(InstrumentumCard card)
     {
         _cards.Children.Add(card);
+        card.CloseRequested += OnCardCloseRequested;
         _headerText.Text = $"⚒ Instrumente · {Count}";
+    }
+
+    private void OnCardCloseRequested(InstrumentumCard card)
+    {
+        _cards.Children.Remove(card);
+        _headerText.Text = $"⚒ Instrumente · {Count}";
+        if (_cards.Children.Count == 0)
+            Emptied?.Invoke(this);
     }
 
     public void Collapse() { _collapsed = true; Refresh(); }

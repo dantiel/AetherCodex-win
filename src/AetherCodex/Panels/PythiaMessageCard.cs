@@ -20,18 +20,21 @@ public sealed class PythiaMessageCard : Border
     private readonly TextBlock _preview;
     private readonly TextBlock _chevron;
     private readonly TextBlock _label;
+    private readonly Button _copyButton;
     private FrameworkElement _full;
     private SyntaxTheme _theme;
     private UiColors _ui;
     private readonly string _markdown;
     private bool _expanded;
+    private double _availableWidth;
 
-    public PythiaMessageCard(SyntaxTheme theme, UiColors ui, string markdown, bool startExpanded)
+    public PythiaMessageCard(SyntaxTheme theme, UiColors ui, string markdown, bool startExpanded, double availableWidth = 0)
     {
         _expanded = startExpanded;
         _theme = theme;
         _ui = ui;
         _markdown = markdown;
+        _availableWidth = availableWidth;
 
         _preview = new TextBlock
         {
@@ -42,7 +45,7 @@ public sealed class PythiaMessageCard : Border
             FontSize = 12.5,
             MaxHeight = 58, // ~3 lines
         };
-        _full = BuildMarkdown(theme, markdown);
+        _full = BuildFull(availableWidth);
 
         _chevron = new TextBlock
         {
@@ -69,6 +72,9 @@ public sealed class PythiaMessageCard : Border
         };
         DockPanel.SetDock(_chevron, Dock.Right);
         header.Children.Add(_chevron);
+        _copyButton = CopyButton.Create(markdown, this, new SolidColorBrush(ui.MutedForeground));
+        DockPanel.SetDock(_copyButton, Dock.Right);
+        header.Children.Add(_copyButton);
         DockPanel.SetDock(_label, Dock.Left);
         header.Children.Add(_label);
         header.MouseLeftButtonUp += (_, _) => Toggle();
@@ -105,17 +111,44 @@ public sealed class PythiaMessageCard : Border
 
         _preview.Foreground = new SolidColorBrush(theme.PythiaBaseText);
         _chevron.Foreground = new SolidColorBrush(ui.MutedForeground);
+        _copyButton.Foreground = new SolidColorBrush(ui.MutedForeground);
         _label.Foreground = new SolidColorBrush(theme.PythiaAccent);
         Background = new SolidColorBrush(theme.PythiaBackground);
         BorderBrush = new SolidColorBrush(theme.PythiaAccent) { Opacity = 0.30 };
 
-        _full = BuildMarkdown(theme, _markdown);
+        _full = BuildFull(_availableWidth);
         if (_expanded)
         {
             var body = (DockPanel)Child;
             body.Children.RemoveAt(body.Children.Count - 1);
             body.Children.Add(_full);
         }
+    }
+
+    /// <summary>Re-render the card's markdown for a new surface width (window / column
+    /// resize). Preserves the collapsed/expanded state and swaps the visible element.</summary>
+    public void ReRender(double availableWidth)
+    {
+        if (availableWidth <= 0) return;
+        if (_full is not null && Math.Abs(availableWidth - _availableWidth) < 1.0) return;
+        _availableWidth = availableWidth;
+        _full = BuildFull(availableWidth);
+        if (_expanded)
+        {
+            var body = (DockPanel)Child;
+            body.Children.RemoveAt(body.Children.Count - 1);
+            body.Children.Add(_full);
+        }
+    }
+
+    /// <summary>Build the markdown host and self-measure so it re-wraps to its own
+    /// layout width — immune to the nesting depth of the card's chrome.</summary>
+    private FrameworkElement BuildFull(double availableWidth)
+    {
+        var full = BuildMarkdown(_theme, _markdown, availableWidth);
+        if (full is RichTextBox rtb)
+            rtb.SizeChanged += (_, _) => ReRender(rtb.ActualWidth);
+        return full;
     }
 
     private void Toggle()
@@ -127,9 +160,10 @@ public sealed class PythiaMessageCard : Border
         body.Children.Add(_expanded ? _full : _preview);
     }
 
-    private static FrameworkElement BuildMarkdown(SyntaxTheme theme, string markdown)
+    private static FrameworkElement BuildMarkdown(SyntaxTheme theme, string markdown, double availableWidth)
     {
-        var doc = MarkdownRenderer.Render(markdown, theme);
+        var baseSize = AetherCodex.Util.AppFonts.UiSize > 0 ? AetherCodex.Util.AppFonts.UiSize : 14.0;
+        var doc = MarkdownRenderer.Render(markdown, theme, baseSize, availableWidth);
         var rtb = new RichTextBox
         {
             Document = doc,

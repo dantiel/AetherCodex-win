@@ -2,17 +2,20 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using AetherCodex.Editor;
+using AetherCodex.Util;
 
 namespace AetherCodex;
 
 public partial class GoToFileWindow : Window
 {
-    public sealed record FileMatch(string Path, string Glyph, string Display);
+    public sealed record Segment(string Text, bool Match);
+
+    public sealed record FileMatch(string Path, string Glyph, IReadOnlyList<Segment> Segments);
 
     public string? SelectedPath { get; private set; }
 
     private readonly string _root;
-    private readonly List<(string Path, string Glyph)> _all = new();
+    private readonly List<(string Path, string Glyph, string Rel)> _all = new();
 
     public GoToFileWindow(string projectRoot, string? currentFile)
     {
@@ -39,8 +42,8 @@ public partial class GoToFileWindow : Window
         if (!Directory.Exists(_root)) return;
         try
         {
-            foreach (var file in ProjectSearch.EnumerateFiles(_root, new[] { "*" }))
-                _all.Add((file, GlyphFor(file)));
+            foreach (var file in ProjectSearch.EnumerateFiles(_root, new[] { "*" }, component: FilterComponent.FileChooser))
+                _all.Add((file, GlyphFor(file), Path.GetRelativePath(_root, file).Replace('\\', '/')));
         }
         catch { /* unreadable tree */ }
     }
@@ -63,19 +66,48 @@ public partial class GoToFileWindow : Window
     private void RefreshResults()
     {
         var q = Query.Text.Trim();
-        IEnumerable<(string Path, string Glyph)> matches = _all;
-        if (q.Length > 0)
+        List<FileMatch> items;
+        if (q.Length == 0)
         {
-            var parts = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            matches = _all.Where(f => parts.All(p => f.Path.Contains(p, StringComparison.OrdinalIgnoreCase)));
+            items = _all
+                .OrderBy(f => f.Rel.Length)
+                .ThenBy(f => f.Rel, StringComparer.OrdinalIgnoreCase)
+                .Take(200)
+                .Select(f => new FileMatch(f.Path, f.Glyph, new[] { new Segment(f.Rel, false) }))
+                .ToList();
         }
-        var items = matches
-            .OrderBy(f => f.Path.Length)
-            .Take(200)
-            .Select(f => new FileMatch(f.Path, f.Glyph, Path.GetRelativePath(_root, f.Path)))
-            .ToList();
+        else
+        {
+            var scored = new List<(string Path, string Glyph, string Rel, double Score, IReadOnlyList<int> Matches)>();
+            foreach (var f in _all)
+            {
+                var r = FuzzyMatcher.Match(q, f.Rel);
+                if (r is { } m) scored.Add((f.Path, f.Glyph, f.Rel, m.Score, m.Matches));
+            }
+            items = scored
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Rel.Length)
+                .ThenBy(x => x.Rel, StringComparer.OrdinalIgnoreCase)
+                .Take(200)
+                .Select(x => new FileMatch(x.Path, x.Glyph, BuildSegments(x.Rel, x.Matches)))
+                .ToList();
+        }
         Results.ItemsSource = items;
         if (Results.Items.Count > 0) Results.SelectedIndex = 0;
+    }
+
+    private static IReadOnlyList<Segment> BuildSegments(string rel, IReadOnlyList<int> matches)
+    {
+        var segs = new List<Segment>();
+        int start = 0;
+        foreach (var idx in matches)
+        {
+            if (idx > start) segs.Add(new Segment(rel.Substring(start, idx - start), false));
+            segs.Add(new Segment(rel.Substring(idx, 1), true));
+            start = idx + 1;
+        }
+        if (start < rel.Length) segs.Add(new Segment(rel.Substring(start), false));
+        return segs;
     }
 
     private void OnQueryChanged(object sender, TextChangedEventArgs e)

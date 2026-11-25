@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -25,6 +26,7 @@ public sealed class RubyBridge : IDisposable
     private const double RequestTimeoutSeconds = 600.0;
 
     private Process? _process;
+    private Socket? _socket;
     private StreamWriter? _stdin;
     private Task? _readerTask;
     private Task? _errorReaderTask;
@@ -50,11 +52,18 @@ public sealed class RubyBridge : IDisposable
     /// <summary>Raised for each `stream` frame (on the reader thread).</summary>
     public event Action<StreamEvent>? StreamReceived;
 
+    /// <summary>Raised for each minimal `notify` frame (live-state change ping).</summary>
+    public event Action<NotifyEvent>? NotifyReceived;
+
     /// <summary>Raised for non-request frames (recover_suggestion, ...).</summary>
     public event Action<DaemonEvent>? EventReceived;
 
     /// <summary>Raised after a wedged/timed-out turn is recovered.</summary>
     public event Action? Recovered;
+
+    /// <summary>Handler for daemon-emitted <c>host_call</c> frames (browser control,
+    /// screenshots, tab open/list). Returns the <c>host_result</c> payload.</summary>
+    public Func<string, JsonObject?, Task<JsonObject?>>? HostCallHandler { get; set; }
 
     public bool IsRunning { get; private set; }
     public string? LastError { get; private set; }
@@ -89,7 +98,41 @@ public sealed class RubyBridge : IDisposable
     public string ProjectRoot =>
         Environment.GetEnvironmentVariable("AETHER_PROJECT_ROOT") is { Length: > 0 } env
             ? env
-            : Directory.GetCurrentDirectory();
+            : ResolveProjectRoot();
+
+    /// <summary>Walk up from <paramref name="start"/> (file or directory) to the
+    /// nearest <c>.aethercodex</c>/<c>.aether_properties</c> ancestor, mirroring
+    /// the daemon's <c>find_project_root</c>. Falls back to the start directory
+    /// (or its parent for a file path) when no config marker exists up the tree.</summary>
+    public static string ResolveProjectRoot(string start)
+    {
+        if (string.IsNullOrWhiteSpace(start))
+            return Directory.GetCurrentDirectory();
+
+        var dir = File.Exists(start)
+            ? new DirectoryInfo(start).Parent
+            : new DirectoryInfo(start);
+        var current = dir;
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, ".aethercodex")) ||
+                File.Exists(Path.Combine(current.FullName, ".aether_properties")))
+                return current.FullName;
+            current = current.Parent;
+        }
+        return dir?.FullName ?? Directory.GetCurrentDirectory();
+    }
+
+    /// <summary>Walk up from the process working directory to the nearest
+    /// <c>.aethercodex</c>/<c>.aether_properties</c>, mirroring the daemon's own
+    /// <c>derive_project_root</c>. Without this, a first-run launch (empty
+    /// <c>LastDirectory</c>) from a directory that is not itself a project would
+    /// seed <c>AETHER_PROJECT_ROOT</c> with the wrong cwd, so the daemon would
+    /// never read the project's <c>allowed-commands: "*"</c> — every
+    /// non-allowlisted command then trips the permission gate and the turn
+    /// stalls after the first tool.</summary>
+    private static string ResolveProjectRoot() =>
+        ResolveProjectRoot(Directory.GetCurrentDirectory());
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -102,39 +145,29 @@ public sealed class RubyBridge : IDisposable
         if (!File.Exists(RubyPath) && RubyPath != "ruby")
             throw new InvalidOperationException($"Ruby not executable at: {RubyPath}");
 
-        var psi = new ProcessStartInfo
+        // One daemon per project, shared by every window of the editor. The
+        // ÆtherLimen socket is the transport: the first window spawns the
+        // background service, subsequent windows connect to it. Each connection
+        // is a session; the single daemon keeps one Mnemosyne/Aegis that every
+        // window breathes together.
+        var socketPath = SocketPath();
+        var socket = await ConnectWithRetryAsync(socketPath, spawnGrace: false);
+        if (socket is null)
         {
-            FileName = RubyPath,
-            Arguments = $"\"{DaemonScript}\"",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = new UTF8Encoding(false),
-            StandardErrorEncoding = new UTF8Encoding(false),
-            StandardInputEncoding = new UTF8Encoding(false),
-        };
-        psi.Environment["AETHER_PROJECT_ROOT"] = ProjectRoot;
-        // Windows does not set LANG/LC_ALL — the indexer throws KeyNotFoundException
-        // ("The given key 'LANG' was not present in the dictionary.") on a missing
-        // key, so guard with ContainsKey instead of relying on ??=.
-        if (!psi.Environment.ContainsKey("LANG"))
-            psi.Environment["LANG"] = "en_US.UTF-8";
-        if (!psi.Environment.ContainsKey("LC_ALL"))
-            psi.Environment["LC_ALL"] = "en_US.UTF-8";
+            try { if (File.Exists(socketPath)) File.Delete(socketPath); } catch { /* stale */ }
+            SpawnDaemon(socketPath);
+            socket = await ConnectWithRetryAsync(socketPath, spawnGrace: true);
+        }
+        if (socket is null)
+            throw new InvalidOperationException("Could not connect to the ÆtherLimen daemon socket.");
 
-        var process = new Process { StartInfo = psi };
-        if (!process.Start())
-            throw new InvalidOperationException("Failed to launch Ruby daemon.");
-
-        _process = process;
-        _stdin = process.StandardInput;
+        _socket = socket;
+        var stream = new NetworkStream(socket, ownsSocket: true);
+        _stdin = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
         _startupTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         IsRunning = true;
 
-        _readerTask = Task.Run(() => ReaderLoop(process.StandardOutput));
-        _errorReaderTask = Task.Run(() => ErrorLoop(process.StandardError));
+        _readerTask = Task.Run(() => ReaderLoop(new StreamReader(stream, new UTF8Encoding(false))));
 
         var startup = _startupTcs.Task;
         var winner = await Task.WhenAny(startup, Task.Delay(TimeSpan.FromSeconds(15)));
@@ -146,15 +179,68 @@ public sealed class RubyBridge : IDisposable
         await startup; // rethrow any fault
     }
 
+    /// <summary>The per-project ÆtherLimen socket (Windows AF_UNIX). One daemon
+    /// binds it; every window connects to the same path.</summary>
+    private string SocketPath()
+    {
+        var dir = Path.Combine(ProjectRoot, ".aether");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "aether-limen.sock").Replace('\\', '/');
+    }
+
+    private async Task<Socket?> ConnectWithRetryAsync(string socketPath, bool spawnGrace)
+    {
+        if (!File.Exists(socketPath) && !spawnGrace)
+            return null;
+        var deadline = DateTime.UtcNow.AddSeconds(spawnGrace ? 15 : 2);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath));
+                return socket;
+            }
+            catch { await Task.Delay(150); }
+        }
+        return null;
+    }
+
+    private void SpawnDaemon(string socketPath)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = RubyPath,
+            Arguments = $"\"{DaemonScript}\" --listen \"{socketPath}\"",
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardErrorEncoding = new UTF8Encoding(false),
+        };
+        psi.Environment["AETHER_PROJECT_ROOT"] = ProjectRoot;
+        if (!psi.Environment.ContainsKey("LANG"))
+            psi.Environment["LANG"] = "en_US.UTF-8";
+        if (!psi.Environment.ContainsKey("LC_ALL"))
+            psi.Environment["LC_ALL"] = "en_US.UTF-8";
+
+        var process = new Process { StartInfo = psi };
+        if (!process.Start())
+            throw new InvalidOperationException("Failed to launch Ruby daemon.");
+        _process = process;
+        _errorReaderTask = Task.Run(() => ErrorLoop(process.StandardError));
+    }
+
     public void Stop()
     {
         IsRunning = false;
         try { _stdin?.Dispose(); } catch { /* already gone */ }
-        try { if (!_process?.HasExited ?? false) _process?.Kill(entireProcessTree: true); } catch { }
-        try { _process?.Dispose(); } catch { }
+        try { _socket?.Dispose(); } catch { }
+        // The daemon is a shared background service (one per project); other
+        // windows may still be connected, so never kill it here.
         _process = null;
         _stdin = null;
-        ResumePendingWithError(new InvalidOperationException("Ruby daemon stopped."));
+        _socket = null;
+        ResumePendingWithError(new InvalidOperationException("Ruby daemon disconnected."));
         _startupTcs?.TrySetResult(false);
     }
 
@@ -172,6 +258,7 @@ public sealed class RubyBridge : IDisposable
 
     private void ReaderLoop(StreamReader reader)
     {
+        var sock = _socket;
         try
         {
             string? line;
@@ -183,6 +270,22 @@ public sealed class RubyBridge : IDisposable
         }
         catch (IOException) { }
         catch (ObjectDisposedException) { }
+        finally
+        {
+            // Reaching EOF means the daemon dropped the socket (crash / restart /
+            // kill), not a clean Stop(). If this reader still owns the current
+            // connection, mark the bridge dead and fail pending turns so the next
+            // request lazily reconnects instead of hanging on the inactivity timer.
+            if (sock is not null && ReferenceEquals(_socket, sock))
+                OnConnectionLost();
+        }
+    }
+
+    private void OnConnectionLost()
+    {
+        IsRunning = false;
+        LastError = "Ruby daemon connection lost.";
+        ResumePendingWithError(new IOException(LastError));
     }
 
     private void ErrorLoop(StreamReader reader)
@@ -249,6 +352,18 @@ public sealed class RubyBridge : IDisposable
                 StreamReceived?.Invoke(new StreamEvent(json));
                 break;
 
+            case DaemonFrames.Type.Notify:
+                if (NotifyEvent.TryParse(json) is { } notify)
+                    NotifyReceived?.Invoke(notify);
+                break;
+
+            case "host_call":
+                _ = HandleHostCallAsync(
+                    json["method"]?.GetValue<string>(),
+                    json["arguments"] as JsonObject,
+                    json["request_id"]?.GetValue<int>());
+                break;
+
             case DaemonFrames.Type.Result:
                 var response = new RubyBridgeResponse(json);
                 if (json["request_id"]?.GetValue<int>() is int requestId)
@@ -276,6 +391,27 @@ public sealed class RubyBridge : IDisposable
                 EventReceived?.Invoke(new OtherEvent(type ?? "unknown", json));
                 break;
         }
+    }
+
+    private async Task HandleHostCallAsync(string? method, JsonObject? args, int? requestId)
+    {
+        JsonObject? result;
+        try
+        {
+            var handler = HostCallHandler;
+            if (handler is null) throw new InvalidOperationException("no host-call handler registered");
+            result = await handler(method ?? "", args);
+        }
+        catch (Exception ex)
+        {
+            result = new JsonObject { ["ok"] = false, ["error"] = ex.Message };
+        }
+        WriteFrame(new JsonObject
+        {
+            ["type"] = "host_result",
+            ["request_id"] = requestId,
+            ["result"] = result,
+        });
     }
 
     private void ResumePendingWithError(Exception error)
@@ -384,11 +520,50 @@ public sealed class RubyBridge : IDisposable
         return response.ResultArray;
     }
 
-    public async Task<JsonArray?> FetchHistoryAsync(int limit = 20)
+    public async Task<JsonArray?> FetchHistoryAsync(int limit = 20, string? sessionId = null, bool includeToolCalls = false)
     {
-        var response = await SendAsync("history", new JsonObject { ["limit"] = limit });
+        var args = new JsonObject { ["limit"] = limit };
+        if (sessionId is not null) args["session_id"] = sessionId;
+        if (includeToolCalls) args["include_tool_calls"] = true;
+        var response = await SendAsync("history", args);
         ThrowIfError(response);
         return response.ResultArray;
+    }
+
+    /// <summary>List this project's recorded sessions (id · turns · first-prompt
+    /// preview), newest activity first, for the session-continue selector.</summary>
+    public async Task<JsonArray?> ListSessionsAsync()
+    {
+        var response = await SendAsync("sessions", new JsonObject());
+        ThrowIfError(response);
+        return response.ResultArray;
+    }
+
+    /// <summary>Pull the durable in-flight live state (the daemon's
+    /// <c>live_turns</c> table). With a session id: one live turn; without: every
+    /// live turn in this project. Called after a <c>notify</c> frame arrives.</summary>
+    public async Task<JsonArray?> GetLiveStateAsync(string? sessionId = null)
+    {
+        var args = new JsonObject();
+        if (sessionId is not null) args["session_id"] = sessionId;
+        var response = await SendAsync("live_state", args);
+        ThrowIfError(response);
+        return response.ResultArray;
+    }
+
+    /// <summary>Pull the durable session message timeline (the daemon's
+    /// <c>session_events</c> table). <paramref name="afterRevision"/> advances the
+    /// cursor so a subscriber receives only what it missed. Returns
+    /// <c>{ session_id, revision, events: [...] }</c> — the current revision plus
+    /// every event with a revision greater than <paramref name="afterRevision"/>.</summary>
+    public async Task<JsonObject?> GetSessionEventsAsync(string sessionId, int afterRevision = 0, int? limit = null)
+    {
+        var args = new JsonObject { ["session_id"] = sessionId };
+        if (afterRevision > 0) args["after_revision"] = afterRevision;
+        if (limit is int l) args["limit"] = l;
+        var response = await SendAsync("session_events", args);
+        ThrowIfError(response);
+        return response.ResultDict;
     }
 
     public async Task<OracleReply?> OracleAsync(string message, JsonObject? context = null)
@@ -403,7 +578,8 @@ public sealed class RubyBridge : IDisposable
         IReadOnlyList<JsonObject> messages,
         string? system = null,
         string? model = null,
-        IReadOnlyList<string>? activeCompanions = null)
+        IReadOnlyList<string>? activeCompanions = null,
+        string? sessionId = null)
     {
         var args = new JsonObject
         {
@@ -413,6 +589,7 @@ public sealed class RubyBridge : IDisposable
         if (system is not null) args["system"] = system;
         if (model is not null) args["model"] = model;
         if (activeCompanions is { Count: > 0 }) args["active_companions"] = JsonArrayFrom(activeCompanions);
+        if (sessionId is not null) args["session_id"] = sessionId;
         var response = await SendAsync("oracle", args);
         return ExtractReply(response);
     }
@@ -425,6 +602,24 @@ public sealed class RubyBridge : IDisposable
             ["message"] = question,
             ["history"] = false,
         });
+        return ExtractReply(response);
+    }
+
+    /// <summary>Runs a companion suggestion: the companion executes the prompt with
+    /// its full specialist tool set (the suggestion-execution tier), honouring any
+    /// temperature/thinking overrides carried by the suggestion payload.</summary>
+    public async Task<OracleReply?> ExecuteSuggestionAsync(string companion, string prompt, double? temperature = null, string? thinking = null)
+    {
+        var args = new JsonObject
+        {
+            ["message"] = prompt,
+            ["companion"] = companion,
+            ["suggestion_execution"] = true,
+            ["history"] = false,
+        };
+        if (temperature is not null) args["temperature"] = temperature.Value;
+        if (thinking is not null) args["thinking"] = thinking;
+        var response = await SendAsync("oracle", args);
         return ExtractReply(response);
     }
 
@@ -448,6 +643,28 @@ public sealed class RubyBridge : IDisposable
     public async Task<JsonObject?> GetConfigAsync()
     {
         var response = await SendAsync("config", new JsonObject());
+        ThrowIfError(response);
+        return response.ResultDict;
+    }
+
+    /// <summary>Derived context overview from the Ruby soul — project root, name,
+    /// config path, memory db, the shared shell cwd, plus the annotated sibling
+    /// contexts from the config's <c>contexts:</c> section. Null when the daemon
+    /// is unavailable.</summary>
+    public async Task<JsonObject?> GetContextsAsync()
+    {
+        var response = await SendAsync("contexts", new JsonObject());
+        ThrowIfError(response);
+        return response.ResultDict;
+    }
+
+    /// <summary>Live ÆtherLink discovery from the Ruby soul — scanned peers plus
+    /// annotated sibling contexts. Returns <c>{ own, contexts:[ { name, port, path,
+    /// description, tags, annotated, stale, busy, online, own } ] }</c>.
+    /// Null when the daemon is unavailable.</summary>
+    public async Task<JsonObject?> GetAetherLinkContextsAsync()
+    {
+        var response = await SendAsync("aether_contexts", new JsonObject());
         ThrowIfError(response);
         return response.ResultDict;
     }
@@ -555,6 +772,23 @@ public sealed class RubyBridge : IDisposable
         return response.ResultDict;
     }
 
+    /// <summary>Structured two-text diff from the Ruby soul (DiffCrepusculum).
+    /// <paramref name="strategy"/> is <c>line</c>, <c>word</c> or <c>crepusculum</c>.
+    /// Returns <c>{ strategy, hunks:[ { old_start, old_count, new_start, new_count,
+    /// lines:[ { type, text, old_no, new_no, spans:[{start,len}] } ] } ] }</c>.</summary>
+    public async Task<JsonObject?> DiffAsync(string oldText, string newText, string strategy = "line", int context = 3)
+    {
+        var response = await SendAsync("diff", new JsonObject
+        {
+            ["old"] = oldText,
+            ["new"] = newText,
+            ["strategy"] = strategy,
+            ["context"] = context,
+        });
+        ThrowIfError(response);
+        return response.ResultDict;
+    }
+
     // ── Decoding helpers ───────────────────────────────────────────────────
 
     private static void ThrowIfError(RubyBridgeResponse response)
@@ -576,7 +810,7 @@ public sealed class RubyBridge : IDisposable
                 answer.GetValue<string>(),
                 resp["reasoning_content"]?.GetValue<string>(),
                 (resp["companion_suggestions"] as JsonArray) ?? new JsonArray(),
-                CompanionSays(resp["logs"] as JsonArray));
+                IntermediaryMessages(resp["logs"] as JsonArray));
         }
 
         // Cooperative interrupt: worker returned a divine-interrupt array.
@@ -590,21 +824,32 @@ public sealed class RubyBridge : IDisposable
         return new OracleReply(response.AsString(), null);
     }
 
-    private static List<CompanionSay> CompanionSays(JsonArray? logs)
+    private static List<IntermediaryMessage> IntermediaryMessages(JsonArray? logs)
     {
-        var result = new List<CompanionSay>();
+        var result = new List<IntermediaryMessage>();
         if (logs is null) return result;
         foreach (var e in logs)
         {
             if (e is not JsonObject log) continue;
-            if (log["type"]?.GetValue<string>() != "say") continue;
-            if (log["data"] is not JsonObject data) continue;
-            var message = data["message"]?.GetValue<string>();
-            if (string.IsNullOrWhiteSpace(message)) continue;
-            result.Add(new CompanionSay(
-                log["glyph"]?.GetValue<string>() ?? "✦",
-                log["companion"]?.GetValue<string>() ?? "",
-                message));
+            var type = log["type"]?.GetValue<string>();
+            if (type == "prelude")
+            {
+                var text = log["text"]?.GetValue<string>()
+                    ?? log["data"]?.GetValue<string>();
+                if (!string.IsNullOrWhiteSpace(text))
+                    result.Add(new IntermediaryMessage("prelude", "", "", text));
+            }
+            else if (type == "say")
+            {
+                if (log["data"] is not JsonObject data) continue;
+                var message = data["message"]?.GetValue<string>();
+                if (string.IsNullOrWhiteSpace(message)) continue;
+                result.Add(new IntermediaryMessage(
+                    "say",
+                    log["glyph"]?.GetValue<string>() ?? "✦",
+                    log["companion"]?.GetValue<string>() ?? "",
+                    message));
+            }
         }
         return result;
     }
@@ -623,7 +868,9 @@ public sealed record OracleReply(
     string? Text,
     string? ReasoningContent,
     JsonArray? CompanionSuggestions = null,
-    IReadOnlyList<CompanionSay>? CompanionSays = null);
+    IReadOnlyList<IntermediaryMessage>? IntermediaryMessages = null);
 
-/// <summary>A companion voice surfaced into the chat flow.</summary>
-public sealed record CompanionSay(string Glyph, string Name, string Message);
+/// <summary>An intermediary agent message surfaced into the chat flow before the
+/// final answer. <c>Kind</c> is <c>prelude</c> (running reasoning) or <c>say</c>
+/// (a companion voice).</summary>
+public sealed record IntermediaryMessage(string Kind, string Glyph, string Name, string Message);

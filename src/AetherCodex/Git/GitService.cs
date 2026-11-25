@@ -80,6 +80,30 @@ public static class GitService
         return result;
     }
 
+    /// <summary>Raw old/new texts for a change: <c>old</c> is the HEAD version (empty
+    /// for added/untracked), <c>new</c> is the working-tree file (empty for deleted).
+    /// Handles renames via <see cref="GitChange.OldPath"/>.</summary>
+    public static (string Old, string New) GetContents(string repoRoot, GitChange change)
+    {
+        string old = "";
+        if (change.Kind is not GitChangeKind.Added and not GitChangeKind.Untracked)
+        {
+            var oldPath = change.OldPath.Length > 0 ? change.OldPath : change.Path;
+            old = Run(repoRoot, "show", "HEAD:" + oldPath);
+        }
+
+        string @new = "";
+        var newPath = Path.Combine(repoRoot, change.Path);
+        try
+        {
+            if (File.Exists(newPath))
+                @new = File.ReadAllText(newPath);
+        }
+        catch { @new = ""; }
+
+        return (old, @new);
+    }
+
     /// <summary>Unified diff for a change (combined staged+unstaged vs HEAD; synthetic for untracked).</summary>
     public static string GetDiff(string repoRoot, GitChange change)
     {

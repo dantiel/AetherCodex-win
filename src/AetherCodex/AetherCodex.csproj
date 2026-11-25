@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,13 +29,10 @@
          The daemon lives in the submodule's ruby/ subdirectory; the bundled
          resources/ (themes + grammars) sit alongside it because the daemon
          resolves ../../resources/Themes relative to ruby/oracle/theme.rb. -->
-    <None Include="..\..\Ruby\ruby\**\*" Link="Ruby\ruby\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\Ruby\resources\**\*" Link="Ruby\resources\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Ruby\ruby\**\*" Link="Ruby\ruby\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Ruby\resources\**\*" Link="Ruby\resources\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Syntax grammars + queries + themes. -->
-    <None Include="..\..\Resources\**\*" Link="Resources\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Resources\**\*" Link="Resources\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

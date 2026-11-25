@@ -16,6 +16,7 @@ public partial class DebugWindow : Window
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _timer.Tick += (_, _) => Refresh();
         _timer.Start();
+        Closed += (_, _) => _timer.Stop();
         Refresh();
     }
 

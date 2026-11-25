@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
@@ -30,6 +31,13 @@ public static class InstrumentumRenderer
             ["corpus_sound"] = "@",
             ["remember"] = "*",
             ["remove_note"] = "-",
+            ["fragment"] = "*",
+            ["recall_fragments"] = "◈",
+            ["recall_history"] = "?",
+            ["ouroboros_recall"] = "◈",
+            ["browser_list"] = "▤",
+            ["atlas_map"] = "◎",
+            ["project_map"] = "◎",
         };
 
     public static string Glyph(string name)
@@ -111,6 +119,38 @@ public static class InstrumentumRenderer
                 var path = S(a?["path"]);
                 return path.Length == 0 ? "erstellt" : path;
             }
+            case "browser_list":
+            {
+                var tabs = Arr(o?["tabs"]);
+                return $"{tabs?.Count ?? 0} Tabs";
+            }
+            case "recall_fragments":
+            {
+                var frags = Arr(o?["fragments"]);
+                return FragSummary(a, frags?.Count ?? 0);
+            }
+            case "recall_notes":
+            case "recall_history":
+            {
+                var notes = Arr(o?["notes"]);
+                return FragSummary(a, notes?.Count ?? 0);
+            }
+            case "recall_corpus":
+            {
+                var nodes = Arr(o?["nodes"]);
+                return FragSummary(a, nodes?.Count ?? 0);
+            }
+            case "ouroboros_recall":
+            {
+                var notes = Arr(o?["notes"]);
+                return $"{notes?.Count ?? 0} Notizen";
+            }
+            case "atlas_map":
+            case "project_map":
+            {
+                var areas = Arr(o?["areas"]);
+                return $"{areas?.Count ?? 0} Gebiete";
+            }
             case "remove_note":
                 return S(a?["id"]);
             default:
@@ -163,6 +203,11 @@ public static class InstrumentumRenderer
             "file_overview" => FileOverviewBody(o, out mono),
             "rename_file" => RenameBody(args, out mono),
             "create_file" => CreateBody(args, out mono),
+            "browser_list" => BrowserListBody(o, out mono),
+            "recall_fragments" or "recall_notes" or "recall_history" => RecallListBody(name, o, out mono),
+            "recall_corpus" => RecallCorpusBody(o, out mono),
+            "ouroboros_recall" => OuroborosBody(o, out mono),
+            "atlas_map" or "project_map" => AtlasBody(o, out mono),
             _ => GenericBody(result, out mono),
         };
         return Cap(lines);
@@ -268,7 +313,7 @@ public static class InstrumentumRenderer
 
     private static List<string> FileOverviewBody(JsonObject? o, out bool mono)
     {
-        mono = false;
+        mono = true;
         var lines = new List<string>();
         var fi = Obj(o?["file_info"]);
         var path = S(fi?["path"]);
@@ -278,16 +323,102 @@ public static class InstrumentumRenderer
             var stats = new List<string>();
             if (fi?["lines"] is not null) stats.Add(S(fi["lines"]) + " Zeilen");
             if (fi?["size"] is not null) stats.Add(S(fi["size"]) + " Bytes");
+            if (fi?["last_modified"] is not null) stats.Add(S(fi["last_modified"]));
             if (stats.Count > 0) lines.Add("  " + string.Join(" · ", stats));
+            lines.Add("");
         }
-        Section(lines, "Struktur", StructuralSummary(o?["structural_summary"]));
-        Section(lines, "Symbole", S(o?["symbolic_overview"]));
-        Section(lines, "Tag-Resonanz", S(o?["tag_cloud"]));
-        Section(lines, "Datei-Resonanz", S(o?["file_cloud"]));
-        if (o?["hermetic_overview"] is JsonArray ha)
-            Section(lines, "Hermetik", string.Join(", ", ha.Select(S)));
-        else
-            Section(lines, "Hermetik", S(o?["hermetic_overview"]));
+
+        var structural = StructuralSummary(o?["structural_summary"]);
+        if (structural.Length > 0) { lines.Add("Struktur   " + structural); lines.Add(""); }
+
+        var symbols = SymbolRows(o?["symbolic_overview"]);
+        if (symbols.Count > 0)
+        {
+            lines.Add($"Symbole   ({symbols.Count})");
+            lines.AddRange(symbols);
+            lines.Add("");
+        }
+
+        var tags = Cloud(o?["tag_cloud"]);
+        if (tags.Count > 0) { lines.Add("Tag-Resonanz"); lines.AddRange(WrapCloud(tags, 64)); lines.Add(""); }
+
+        var files = Cloud(o?["file_cloud"]);
+        if (files.Count > 0) { lines.Add("Datei-Resonanz"); lines.AddRange(WrapCloud(files, 64)); lines.Add(""); }
+
+        var hermetic = o?["hermetic_overview"] is JsonArray ha
+            ? ha.Select(S).Where(x => x.Length > 0).ToList()
+            : new List<string>();
+        if (hermetic.Count > 0)
+        {
+            lines.Add("Hermetik");
+            foreach (var h in hermetic) lines.Add("  " + Truncate(h, 100));
+            lines.Add("");
+        }
+
+        if (lines.Count > 0 && lines[^1] == "") lines.RemoveAt(lines.Count - 1);
+        return lines;
+    }
+
+    private static readonly Regex SymbolRx = new(
+        @"^\s*(\d+):\s*([A-Za-z_][\w-]*)\s+(.+?)\s*$", RegexOptions.Compiled);
+
+    /// <summary>Parses <c>symbolic_overview</c> ("8: nam Foo\n 31: met bar") into an
+    /// aligned line-number + kind + name table instead of a raw dump.</summary>
+    private static List<string> SymbolRows(JsonNode? node)
+    {
+        var rows = new List<string>();
+        foreach (var raw in SplitLines(S(node)))
+        {
+            if (raw.Trim().Length == 0) continue;
+            var m = SymbolRx.Match(raw);
+            if (!m.Success) { rows.Add("        " + raw.Trim()); continue; }
+            rows.Add($"{m.Groups[1].Value,4}  {KindLabel(m.Groups[2].Value),-9} {m.Groups[3].Value}");
+        }
+        return rows;
+    }
+
+    private static string KindLabel(string kind) => kind.ToLowerInvariant() switch
+    {
+        "nam" => "namespace",
+        "cla" => "class",
+        "met" => "method",
+        "con" => "ctor",
+        "pro" => "property",
+        "fie" => "field",
+        "imp" => "import",
+        "exp" => "export",
+        _ => kind,
+    };
+
+    /// <summary>Parses a "key: weight" cloud (tag_cloud / file_cloud) into weighted
+    /// entries sorted by weight descending.</summary>
+    private static List<(string Key, int Weight)> Cloud(JsonNode? node)
+    {
+        var list = new List<(string Key, int Weight)>();
+        foreach (var line in SplitLines(S(node)))
+        {
+            var idx = line.LastIndexOf(':');
+            if (idx < 0) continue;
+            var key = line[..idx].Trim();
+            var w = int.TryParse(line[(idx + 1)..].Trim(), out var n) ? n : 0;
+            if (key.Length > 0) list.Add((key, w));
+        }
+        return list.OrderByDescending(x => x.Weight).ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>Flows weighted cloud entries into wrapped, aligned lines.</summary>
+    private static List<string> WrapCloud(List<(string Key, int Weight)> cloud, int width)
+    {
+        var lines = new List<string>();
+        var sb = new StringBuilder();
+        foreach (var (key, w) in cloud)
+        {
+            var token = w > 0 ? $"{key}({w})" : key;
+            if (sb.Length == 0) sb.Append("  ").Append(token);
+            else if (sb.Length + token.Length + 2 <= width) sb.Append("  ").Append(token);
+            else { lines.Add(sb.ToString()); sb.Clear(); sb.Append("  ").Append(token); }
+        }
+        if (sb.Length > 0) lines.Add(sb.ToString());
         return lines;
     }
 
@@ -308,6 +439,112 @@ public static class InstrumentumRenderer
         var content = S(a?["content"]);
         if (content.Length > 0) { lines.Add(""); lines.AddRange(SplitLines(content)); }
         return lines;
+    }
+
+    private static List<string> BrowserListBody(JsonObject? o, out bool mono)
+    {
+        mono = false;
+        var lines = new List<string>();
+        var tabs = Arr(o?["tabs"]);
+        if (tabs is not { Count: > 0 }) { lines.Add("keine offenen Tabs"); return lines; }
+        for (int i = 0; i < tabs.Count; i++)
+        {
+            if (tabs[i] is not JsonObject t)
+            {
+                lines.Add($"{i + 1}. {Truncate(Compact(tabs[i]), 120)}");
+                continue;
+            }
+            var title = S(t["title"]);
+            var url = S(t["url"]);
+            lines.Add($"{i + 1}. {(title.Length > 0 ? title : "(ohne Titel)")}");
+            if (url.Length > 0) lines.Add("    " + url);
+        }
+        return lines;
+    }
+
+    private static List<string> RecallListBody(string name, JsonObject? o, out bool mono)
+    {
+        mono = false;
+        var key = name == "recall_fragments" ? "fragments" : "notes";
+        var items = Arr(o?[key]);
+        var lines = new List<string>();
+        if (items is not { Count: > 0 }) { lines.Add("keine Treffer"); return lines; }
+        foreach (var item in items)
+            NoteLine(item, lines);
+        return lines;
+    }
+
+    private static List<string> RecallCorpusBody(JsonObject? o, out bool mono)
+    {
+        mono = true;
+        var lines = new List<string>();
+        var nodes = Arr(o?["nodes"]);
+        if (nodes is not { Count: > 0 }) { lines.Add("keine Treffer"); return lines; }
+        foreach (var node in nodes)
+        {
+            if (node is not JsonObject no) { lines.Add("· " + Truncate(Compact(node), 120)); continue; }
+            var path = S(no["path"]);
+            var name = S(no["name"]);
+            var line = S(no["line"]);
+            var head = name.Length > 0 ? $"{path}:{name}" : path;
+            if (line.Length > 0 && line != "0") head += $":{line}";
+            lines.Add("· " + (head.Length > 0 ? head : "(node)"));
+            var content = Compact(no["content"]);
+            if (content.Length > 0) lines.Add("  " + Truncate(content, 120));
+        }
+        return lines;
+    }
+
+    private static List<string> OuroborosBody(JsonObject? o, out bool mono)
+    {
+        mono = false;
+        var lines = new List<string>();
+        var digest = Compact(o?["digest"]);
+        if (digest.Length > 0) { lines.AddRange(SplitLines(digest)); lines.Add(""); }
+        var notes = Arr(o?["notes"]);
+        if (notes is { Count: > 0 })
+        {
+            lines.Add($"Quellnotizen ({notes.Count})");
+            foreach (var note in notes)
+                NoteLine(note, lines);
+        }
+        return lines;
+    }
+
+    private static List<string> AtlasBody(JsonObject? o, out bool mono)
+    {
+        mono = false;
+        var lines = new List<string>();
+        var overview = Compact(o?["overview"]);
+        if (overview.Length > 0) { lines.AddRange(SplitLines(overview)); lines.Add(""); }
+        var areas = Arr(o?["areas"]);
+        if (areas is { Count: > 0 })
+        {
+            lines.Add($"Gebiete ({areas.Count})");
+            for (int i = 0; i < areas.Count; i++)
+                lines.Add($"{i + 1}. {Truncate(Compact(areas[i]), 160)}");
+        }
+        return lines;
+    }
+
+    private static void NoteLine(JsonNode? item, List<string> lines)
+    {
+        if (item is not JsonObject n) { lines.Add("· " + Truncate(Compact(item), 120)); return; }
+        var id = S(n["id"]);
+        var content = Compact(n["content"]);
+        lines.Add((id.Length > 0 ? $"#{id}  " : "- ") + Truncate(content, 140));
+        var meta = new List<string>();
+        var score = S(n["score"]);
+        if (score.Length > 0) meta.Add("score " + score);
+        var tags = S(n["tags"]);
+        if (tags.Length > 0) meta.Add(tags);
+        if (meta.Count > 0) lines.Add("      " + string.Join(" · ", meta));
+    }
+
+    private static string FragSummary(JsonObject? a, int count)
+    {
+        var q = S(a?["query"]);
+        return q.Length == 0 ? $"{count} Einträge" : $"{count} Treffer · {Truncate(q, 40)}";
     }
 
     private static List<string> GenericBody(JsonNode? result, out bool mono)

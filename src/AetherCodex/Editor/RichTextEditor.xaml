@@ -1,7 +1,8 @@
 <UserControl x:Class="AetherCodex.Editor.RichTextEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:editor="clr-namespace:AetherCodex.Editor">
+             xmlns:editor="clr-namespace:AetherCodex.Editor"
+             xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit">
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{DynamicResource ChromeBackground}"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
@@ -59,17 +60,13 @@
                      HorizontalScrollBarVisibility="Disabled"
                      FontSize="14"/>
 
-        <TextBox x:Name="SourceBox"
-                 AcceptsReturn="True" AcceptsTab="True"
+        <avalonedit:TextEditor x:Name="SourceBox"
                  Background="{DynamicResource EditorBackground}"
                  Foreground="{DynamicResource Foreground}"
-                 CaretBrush="{DynamicResource AccentBright}"
                  FontFamily="Cascadia Mono, Consolas"
                  FontSize="13"
-                 Padding="16,14"
                  VerticalScrollBarVisibility="Auto"
                  HorizontalScrollBarVisibility="Disabled"
-                 TextWrapping="NoWrap"
                  Visibility="Collapsed"/>
     </DockPanel>
 </UserControl>

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -27,6 +27,10 @@ public static class MarkdownRenderer
 
     public static event Action<string, int, int>? FileLinkRequested;
 
+    /// <summary>Raised for ordinary markdown links (http/https, relative paths, file:// URIs)
+    /// so the host can open them as editor tabs instead of the OS browser.</summary>
+    public static event Action<string>? WebLinkRequested;
+
     public static void WireFileLinks(RichTextBox rtb)
         => rtb.AddHandler(Hyperlink.RequestNavigateEvent,
             new RequestNavigateEventHandler(HandleFileLink), handledEventsToo: true);
@@ -47,18 +51,29 @@ public static class MarkdownRenderer
         }
 
         var uri = h.NavigateUri;
-        if (uri is not null && (uri.Scheme == "http" || uri.Scheme == "https"))
-        {
-            try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }
-            catch { /* non-fatal */ }
-        }
+        if (uri is null) return;
+        var target = uri.OriginalString;
+        if (target.Length == 0 || target.StartsWith('#')) return;
+        if (target.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
+            || target.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase)
+            || target.StartsWith("tel:", StringComparison.OrdinalIgnoreCase))
+            return;
+        WebLinkRequested?.Invoke(target);
     }
 
     /// <summary>Render with the user's configured prose size (<see cref="AppFonts.UiSize"/>).</summary>
     public static FlowDocument Render(string markdown, SyntaxTheme theme)
-        => Render(markdown, theme, AppFonts.UiSize > 0 ? AppFonts.UiSize : 14.0);
+        => Render(markdown, theme, AppFonts.UiSize > 0 ? AppFonts.UiSize : 14.0, 0);
 
     public static FlowDocument Render(string markdown, SyntaxTheme theme, double baseFontSize)
+        => Render(markdown, theme, baseFontSize, 0);
+
+    /// <summary>
+    /// <paramref name="availableWidth"/> is the pixel width the surface grants the
+    /// document; fenced code blocks are wrapped to it so they reflow with the window
+    /// and the ruler-defined document bounds. Pass 0 (unknown) for the legacy fixed wrap.
+    /// </summary>
+    public static FlowDocument Render(string markdown, SyntaxTheme theme, double baseFontSize, double availableWidth)
     {
         var proseFg = theme.PythiaBaseText;
         var mutedFg = theme.PythiaForeground;
@@ -66,6 +81,7 @@ public static class MarkdownRenderer
         var codeFg = theme.PythiaCodeForeground;
         var mono = AppFonts.MonoFamily;
         var prose = AppFonts.UiFamily;
+        var codeWrap = CodeWrapChars(mono, baseFontSize - 1, availableWidth);
 
         var doc = new FlowDocument
         {
@@ -104,7 +120,7 @@ public static class MarkdownRenderer
                 Tag = "code:" + codeLang,
             };
             CodeColorizer.Append(block.Inlines, theme, lang,
-                codeBuilder.ToString().TrimEnd('\n'), mono, baseFontSize - 1, codeFg);
+                codeBuilder.ToString().TrimEnd('\n'), mono, baseFontSize - 1, codeFg, codeWrap);
             doc.Blocks.Add(block);
             codeBuilder.Clear();
         }
@@ -244,6 +260,44 @@ public static class MarkdownRenderer
         FlushTable();
         FlushParagraph();
         return doc;
+    }
+
+    // Mono advance width (DIPs) cache — a monospace face's advance is stable for a
+    // given family + size, so measure once and reuse.
+    private static readonly Dictionary<(string Family, double Size), double> MonoAdvanceCache = new();
+
+    /// <summary>
+    /// Characters-per-line for a fenced code block, derived from the surface width the
+    /// document is granted and the mono font's advance width. A width of 0 (unknown)
+    /// keeps the legacy fixed wrap of 110 columns.
+    /// </summary>
+    private static int CodeWrapChars(FontFamily mono, double fontSize, double availableWidth)
+    {
+        if (availableWidth <= 0) return 110;
+        // Code-block chrome inside the document: 3px left border + 12px left/right
+        // padding, plus the FlowDocument's PagePadding (4 left + 8 right) + 1px slack.
+        double textWidth = availableWidth - 40;
+        if (textWidth < 60) textWidth = 60;
+        double advance = MonoAdvance(mono, fontSize);
+        if (advance <= 0) advance = fontSize * 0.6;
+        return Math.Max(20, (int)Math.Floor(textWidth / advance));
+    }
+
+    private static double MonoAdvance(FontFamily mono, double fontSize)
+    {
+        var key = (mono.Source ?? mono.ToString(), fontSize);
+        if (MonoAdvanceCache.TryGetValue(key, out var cached)) return cached;
+        double advance;
+        try
+        {
+            var typeface = new Typeface(mono, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+            var ft = new FormattedText("0", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                typeface, fontSize, Brushes.Black, 1.0);
+            advance = ft.WidthIncludingTrailingWhitespace;
+        }
+        catch { advance = fontSize * 0.6; }
+        MonoAdvanceCache[key] = advance;
+        return advance;
     }
 
     private static void AddHeading(FlowDocument doc, SyntaxTheme theme, string text, int level, double baseSize, Color proseFg)
@@ -419,7 +473,8 @@ public static class MarkdownRenderer
                 case InlineKind.Link:
                 {
                     var s = theme.Resolve("markup.link", new ScopeStyle(theme.PythiaAccent, Underline: true));
-                    span.Inlines.Add(new Hyperlink(new Run(content))
+                    var label = string.IsNullOrWhiteSpace(tokenizer.Label) ? content : tokenizer.Label;
+                    span.Inlines.Add(new Hyperlink(new Run(label))
                     {
                         NavigateUri = new Uri(content, UriKind.RelativeOrAbsolute),
                         Foreground = new SolidColorBrush(s.Color),
@@ -467,9 +522,11 @@ public static class MarkdownRenderer
 
         public FileLink? FileLink { get; private set; }
 
+        public string? Label { get; private set; }
+
         public bool Next(out InlineKind kind, out string content)
         {
-            kind = InlineKind.Text; content = ""; FileLink = null;
+            kind = InlineKind.Text; content = ""; FileLink = null; Label = null;
             if (_pos >= _text.Length) return false;
 
             if (_text[_pos] == '`')
@@ -501,9 +558,19 @@ public static class MarkdownRenderer
                     int end = _text.IndexOf(')', close + 2);
                     if (end > close)
                     {
-                        kind = InlineKind.Link;
+                        Label = _text[(_pos + 1)..close];
                         content = _text[(close + 2)..end];
                         _pos = end + 1;
+
+                        var aether = TryParseAetherLink(content, Label);
+                        if (aether is not null)
+                        {
+                            kind = InlineKind.FileLink;
+                            FileLink = aether;
+                            return true;
+                        }
+
+                        kind = InlineKind.Link;
                         return true;
                     }
                 }
@@ -527,6 +594,45 @@ public static class MarkdownRenderer
             while (_pos < _text.Length && !IsSpecial(_text, _pos)) _pos++;
             content = _text[start.._pos];
             return content.Length > 0;
+        }
+
+        /// <summary>
+        /// A canonical <c>aethercodex://open?path=...&amp;line=...&amp;column=...</c>
+        /// URL becomes a file link that opens the editor at the given position, not a
+        /// generic web link. The markdown label is preserved as the link text.
+        /// </summary>
+        private static FileLink? TryParseAetherLink(string url, string? label)
+        {
+            if (!url.StartsWith("aethercodex://", StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                return null;
+
+            var path = QueryParam(uri.Query, "path");
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+
+            int.TryParse(QueryParam(uri.Query, "line"), out var line);
+            int.TryParse(QueryParam(uri.Query, "column"), out var column);
+
+            string decoded;
+            try { decoded = Uri.UnescapeDataString(path); }
+            catch { decoded = path; }
+
+            return new FileLink(decoded, line, column, label);
+        }
+
+        private static string? QueryParam(string query, string name)
+        {
+            var q = query.TrimStart('?');
+            foreach (var pair in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var idx = pair.IndexOf('=');
+                if (idx <= 0) continue;
+                if (pair[..idx].Equals(name, StringComparison.OrdinalIgnoreCase))
+                    return pair[(idx + 1)..];
+            }
+            return null;
         }
 
         private FileLink? TryParseFileTag()

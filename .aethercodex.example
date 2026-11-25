@@ -10,3 +10,29 @@
 # the context and, optionally, overrides per-project settings.
 name: AetherCodex-Win
 allowed-commands: "*"
+
+# ── File filtering (TextMate-compatible) ────────────────────────────────
+# Same variables as TextMate (macromates.com/textmate/manual/projects).
+# `exclude*` prunes matching paths; `include*` re-includes a path an exclude
+# would otherwise drop. A pattern with `/` matches the path relative to this
+# file; one without also matches the bare file/dir name at any depth. Values
+# are comma-separated brace-expanded globs.
+#
+# Full variable set (all optional):
+#   include / exclude                       — any item, every component
+#   includeDirectories / excludeDirectories — directories only
+#   includeFiles / excludeFiles             — files only
+#   …InBrowser / …InFileChooser / …InFolderSearch — scope to the File Browser,
+#       Go-to-File (Open Quickly), or Find-in-Project respectively.
+#
+# Example:
+#   exclude: "{*.{o,obj,pyc,dll,exe,log},CVS,_darcs,_MTN,blib}"
+#   excludeDirectoriesInFileChooser: "{build,Saved,Intermediate,node_modules}"
+#   excludeDirectoriesInFolderSearch: "{build,Saved,Intermediate,node_modules}"
+
+# AI-only ignore (Argonaut / Pythia context) — prunes the AI context (project
+# summary + corpus sounding) but NOT the editor file browser/search. TextMate
+# reads the same variable via TM_QUERY; aethercodex-win reads it from here.
+# Bare names match at any depth; a leading / anchors to the project root.
+#   excludeInArgonaut: "{Saved,Intermediate,Binaries,DerivedDataCache,node_modules}"
+#   includeInArgonaut: "{src,lib}"

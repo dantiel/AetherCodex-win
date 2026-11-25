@@ -36,6 +36,25 @@
             </DockPanel>
         </Border>
 
+        <!-- Session / Aegis orientation strip: this window's session (left) and
+             the shared Aegis course (right), the two faces of the orientation. -->
+        <Border DockPanel.Dock="Top" Padding="12,4,8,4" Background="{DynamicResource EditorBackground}"
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Border}">
+            <DockPanel>
+                <Button x:Name="SessionsButton" DockPanel.Dock="Left" Margin="0,0,8,0"
+                        Style="{StaticResource IconButton}" ToolTip="Sessions" Click="OnSessions">
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE81C;" FontSize="12"/>
+                </Button>
+                <TextBlock x:Name="SessionLabel" DockPanel.Dock="Left" Margin="0,0,16,0"
+                           FontSize="11" Foreground="{DynamicResource MutedForeground}"
+                           VerticalAlignment="Center" Text="◈ Session —"/>
+                <TextBlock x:Name="AegisLabel" FontSize="11" Foreground="{DynamicResource MutedForeground}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                           Text="course — loading…"/>
+            </DockPanel>
+        </Border>
+
         <!-- Input (docked before the fill child so it sits at the bottom edge) -->
         <Border DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource Border}" Background="{DynamicResource ChromeBackground}">
             <DockPanel Margin="8">

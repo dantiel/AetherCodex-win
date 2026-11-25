@@ -27,8 +27,30 @@
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{Binding Glyph}" Width="18" Foreground="{DynamicResource Accent}"/>
-                        <TextBlock Text="{Binding Display}" Foreground="{DynamicResource Foreground}"
-                                   TextTrimming="CharacterEllipsis"/>
+                        <ItemsControl ItemsSource="{Binding Segments}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Text}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource Foreground}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Match}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>

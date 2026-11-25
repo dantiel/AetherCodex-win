@@ -29,9 +29,6 @@ public static class ProjectSearch
 
     public sealed record SearchMatch(string File, int Line, int Column, int Length, string LineText, string Glyph);
 
-    private static readonly HashSet<string> IgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
-    { ".git", ".aether", ".vendor_bundle", ".bundle", "node_modules", "bin", "obj", ".vs", "vendored" };
-
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".tiff", ".psd",
@@ -45,38 +42,43 @@ public static class ProjectSearch
         ".wasm", ".aotdata", ".resources",
     };
 
-    public static IEnumerable<string> EnumerateFiles(string root, IReadOnlyList<string> globs, CancellationToken token = default)
+    public static IEnumerable<string> EnumerateFiles(string root, IReadOnlyList<string> globs, CancellationToken token = default, FilterComponent component = FilterComponent.FolderSearch)
     {
         if (!Directory.Exists(root)) yield break;
-        var stack = new Stack<string>();
-        stack.Push(root);
+        var ignore = ProjectIgnore.Load(root);
+        var stack = new Stack<(string Dir, bool Excluded)>();
+        stack.Push((root, false));
         while (stack.Count > 0)
         {
             if (token.IsCancellationRequested) yield break;
-            var dir = stack.Pop();
+            var (dir, inheritedExcluded) = stack.Pop();
+
             IEnumerable<string> entries;
             try { entries = Directory.EnumerateFileSystemEntries(dir); }
             catch { continue; }
             foreach (var entry in entries)
             {
-                var name = Path.GetFileName(entry);
-                if (IgnoredDirs.Contains(name)) continue;
-                try
-                {
-                    if (Directory.Exists(entry)) stack.Push(entry);
-                }
-                catch { continue; }
-            }
-
-            IEnumerable<string> files;
-            try { files = Directory.EnumerateFiles(dir); }
-            catch { continue; }
-            foreach (var file in files)
-            {
                 if (token.IsCancellationRequested) yield break;
-                var name = Path.GetFileName(file);
-                if (IgnoredDirs.Contains(name)) continue;
-                if (GlobsMatch(file, globs)) yield return file;
+                var name = Path.GetFileName(entry);
+                if (ProjectIgnore.IsDefaultIgnored(name)) continue;
+
+                bool isDir;
+                try { isDir = File.GetAttributes(entry).HasFlag(FileAttributes.Directory); }
+                catch { continue; }
+
+                var rel = ignore.RelativePath(entry);
+                if (isDir)
+                {
+                    bool excluded = inheritedExcluded || ignore.MatchesExclude(rel, true, component);
+                    if (excluded && !ignore.MatchesInclude(rel, true, component) && !ignore.HasIncludeInside(rel, component)) continue;
+                    stack.Push((entry, excluded));
+                }
+                else
+                {
+                    bool excluded = inheritedExcluded || ignore.MatchesExclude(rel, false, component);
+                    if (excluded && !ignore.MatchesInclude(rel, false, component)) continue;
+                    if (GlobsMatch(entry, globs)) yield return entry;
+                }
             }
         }
     }

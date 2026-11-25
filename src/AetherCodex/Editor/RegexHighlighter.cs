@@ -18,6 +18,7 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
 
     private object? _cachedVersion;
     private HashSet<int> _blockCommentLines = new();
+    private HashSet<int> _markdownFenceLines = new();
 
     public RegexHighlighter(SyntaxTheme theme, LanguageDefinition language)
     {
@@ -29,16 +30,30 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
     {
         _cachedVersion = null;
         _blockCommentLines.Clear();
+        _markdownFenceLines.Clear();
     }
 
     protected override void ColorizeLine(DocumentLine line)
     {
         var doc = CurrentContext.Document;
         if (!ReferenceEquals(doc.Version, _cachedVersion))
+        {
+            _cachedVersion = doc.Version;
+            _blockCommentLines.Clear();
+            _markdownFenceLines.Clear();
             RecomputeBlockComments(doc);
+            if (_language.Key == "markdown")
+                RecomputeMarkdownFences(doc);
+        }
 
         var text = doc.GetText(line);
         if (text.Length == 0) return;
+
+        if (_language.Key == "markdown")
+        {
+            ColorizeMarkdownLine(line, text);
+            return;
+        }
 
         bool lineStartsInComment = _blockCommentLines.Contains(line.LineNumber);
         var excluded = new List<(int Start, int Length)>();
@@ -158,6 +173,8 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
                         System.Windows.FontStyles.Italic,
                         element.TextRunProperties.Typeface.Weight,
                         element.TextRunProperties.Typeface.Stretch));
+                if (style.Strikethrough)
+                    element.TextRunProperties.SetTextDecorations(System.Windows.TextDecorations.Strikethrough);
             });
     }
 
@@ -170,9 +187,6 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
 
     private void RecomputeBlockComments(TextDocument doc)
     {
-        _blockCommentLines.Clear();
-        _cachedVersion = doc.Version;
-
         if (_language.BlockComments.Length == 0) return;
 
         var (startDelim, endDelim) = _language.BlockComments[0];
@@ -212,6 +226,122 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
         @"""(?:\\.|[^""\\])*""|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`",
         RegexOptions.Compiled);
 
+    // ── Markdown ──────────────────────────────────────────────────────────────
+    private static readonly Regex MarkdownFenceRx = new(@"^\s*(```|~~~)", RegexOptions.Compiled);
+    private static readonly Regex MarkdownHeadingRx = new(@"^#{1,6}\s", RegexOptions.Compiled);
+    private static readonly Regex MarkdownThematicBreakRx = new(@"^\s*([-*_])\s*\1\s*\1[\s\1]*$", RegexOptions.Compiled);
+    private static readonly Regex MarkdownBlockquoteRx = new(@"^\s*>\s?", RegexOptions.Compiled);
+    private static readonly Regex MarkdownListRx = new(@"^\s*([-*+]|\d+[.)])\s+", RegexOptions.Compiled);
+    private static readonly Regex MarkdownInlineCodeRx = new(@"`[^`\n]+`", RegexOptions.Compiled);
+    private static readonly Regex MarkdownBoldRx = new(@"\*\*[^*\n]+\*\*|__[^_\n]+__", RegexOptions.Compiled);
+    private static readonly Regex MarkdownItalicRx = new(@"(?<!\*)\*[^*\n]+\*(?!\*)|(?<!_)_[^_\n]+_(?!_)", RegexOptions.Compiled);
+    private static readonly Regex MarkdownStrikeRx = new(@"~~[^~\n]+~~", RegexOptions.Compiled);
+    private static readonly Regex MarkdownLinkRx = new(@"!?(\[[^\]\n]*\])\(([^)\s]+)\)", RegexOptions.Compiled);
+
+    private void RecomputeMarkdownFences(TextDocument doc)
+    {
+        _markdownFenceLines.Clear();
+        bool inFence = false;
+        int lineNumber = 1;
+        foreach (DocumentLine line in doc.Lines)
+        {
+            var text = doc.GetText(line);
+            bool fence = MarkdownFenceRx.IsMatch(text);
+            if (inFence)
+            {
+                _markdownFenceLines.Add(lineNumber);
+                if (fence) inFence = false;
+            }
+            else if (fence)
+            {
+                inFence = true;
+            }
+            lineNumber++;
+        }
+    }
+
+    private void ColorizeMarkdownLine(DocumentLine line, string text)
+    {
+        // Fenced code block content (monospace block, highlighted as raw markup).
+        if (_markdownFenceLines.Contains(line.LineNumber))
+        {
+            Colorize(line, 0, text.Length, _theme.Resolve("markup.raw", Fallback.MarkupRaw));
+            return;
+        }
+        if (MarkdownFenceRx.IsMatch(text))
+        {
+            Colorize(line, 0, text.Length, _theme.Resolve("markup.raw.delimiter", Fallback.Comment));
+            return;
+        }
+        // Headings and thematic breaks colour the whole line.
+        if (MarkdownHeadingRx.IsMatch(text))
+        {
+            Colorize(line, 0, text.Length, _theme.Resolve("markup.heading", Fallback.MarkupHeading));
+            return;
+        }
+        if (MarkdownThematicBreakRx.IsMatch(text))
+        {
+            Colorize(line, 0, text.Length, _theme.Resolve("comment", Fallback.Comment));
+            return;
+        }
+
+        var excluded = new List<(int Start, int Length)>();
+
+        var quote = MarkdownBlockquoteRx.Match(text);
+        if (quote.Success)
+        {
+            Colorize(line, quote.Index, quote.Length, _theme.Resolve("markup.quote", Fallback.Comment));
+            excluded.Add((quote.Index, quote.Length));
+        }
+
+        var list = MarkdownListRx.Match(text);
+        if (list.Success)
+        {
+            Colorize(line, list.Index, list.Length, _theme.Resolve("markup.list", Fallback.Keyword));
+            excluded.Add((list.Index, list.Length));
+        }
+
+        foreach (Match m in MarkdownInlineCodeRx.Matches(text))
+        {
+            if (IsExcluded(m.Index, m.Length, excluded)) continue;
+            Colorize(line, m.Index, m.Length, _theme.Resolve("markup.raw", Fallback.MarkupRaw));
+            excluded.Add((m.Index, m.Length));
+        }
+        foreach (Match m in MarkdownBoldRx.Matches(text))
+        {
+            if (IsExcluded(m.Index, m.Length, excluded)) continue;
+            Colorize(line, m.Index, m.Length, _theme.Resolve("markup.bold", Fallback.MarkupBold));
+            excluded.Add((m.Index, m.Length));
+        }
+        foreach (Match m in MarkdownItalicRx.Matches(text))
+        {
+            if (IsExcluded(m.Index, m.Length, excluded)) continue;
+            Colorize(line, m.Index, m.Length, _theme.Resolve("markup.italic", Fallback.MarkupItalic));
+            excluded.Add((m.Index, m.Length));
+        }
+        foreach (Match m in MarkdownStrikeRx.Matches(text))
+        {
+            if (IsExcluded(m.Index, m.Length, excluded)) continue;
+            Colorize(line, m.Index, m.Length, _theme.Resolve("markup.strikethrough", Fallback.MarkupStrike));
+            excluded.Add((m.Index, m.Length));
+        }
+        foreach (Match m in MarkdownLinkRx.Matches(text))
+        {
+            var label = m.Groups[1];
+            var url = m.Groups[2];
+            if (!IsExcluded(label.Index, label.Length, excluded))
+            {
+                Colorize(line, label.Index, label.Length, _theme.Resolve("markup.link", Fallback.MarkupLink));
+                excluded.Add((label.Index, label.Length));
+            }
+            if (!IsExcluded(url.Index, url.Length, excluded))
+            {
+                Colorize(line, url.Index, url.Length, _theme.Resolve("string.other.link", Fallback.String));
+                excluded.Add((url.Index, url.Length));
+            }
+        }
+    }
+
     /// <summary>Fallback scope palette used when a theme omits a scope.</summary>
     private static class Fallback
     {
@@ -224,6 +354,12 @@ public sealed class RegexHighlighter : DocumentColorizingTransformer
         public static readonly ScopeStyle Function = new(Color.FromRgb(0x61, 0xAF, 0xEF));
         public static readonly ScopeStyle Tag = new(Color.FromRgb(0xE0, 0x6C, 0x75));
         public static readonly ScopeStyle Attribute = new(Color.FromRgb(0xD1, 0x9A, 0x66));
+        public static readonly ScopeStyle MarkupHeading = new(Color.FromRgb(0xB4, 0x8C, 0xFF), Bold: true);
+        public static readonly ScopeStyle MarkupBold = new(Color.FromRgb(0xE6, 0xE6, 0xE6), Bold: true);
+        public static readonly ScopeStyle MarkupItalic = new(Color.FromRgb(0xE6, 0xE6, 0xE6), Italic: true);
+        public static readonly ScopeStyle MarkupStrike = new(Color.FromRgb(0x8E, 0x94, 0xA0), Strikethrough: true);
+        public static readonly ScopeStyle MarkupLink = new(Color.FromRgb(0x61, 0xAF, 0xEF));
+        public static readonly ScopeStyle MarkupRaw = new(Color.FromRgb(0x8F, 0xB5, 0x73));
     }
 
     /// <summary>Freeze brushes so the same color isn't re-allocated per token.</summary>

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using AetherCodex.Editor;
 using AetherCodex.Models;
 
 namespace AetherCodex.Panels;
@@ -15,6 +16,7 @@ public partial class FileBrowser : UserControl
     public event Action<string>? DeleteRequested;
     public event Action<string>? DuplicateRequested;
     public event Action<string, bool>? NewItemRequested;
+    public event Action<string>? FavouriteRequested;
 
     private FileItem? _root;
     private bool _suppressSelection;
@@ -35,7 +37,7 @@ public partial class FileBrowser : UserControl
     public void SetRoot(string directory)
     {
         if (!Directory.Exists(directory)) return;
-        _root = new FileItem(directory, true);
+        _root = new FileItem(directory, true, ProjectIgnore.Load(directory));
         _root.LoadChildren();
         Tree.ItemsSource = new ObservableCollection<FileItem> { _root };
         _root.IsExpanded = true;
@@ -106,6 +108,49 @@ public partial class FileBrowser : UserControl
             node.Reload();
     }
 
+    /// <summary>Re-read the entire tree from disk, preserving which directories were
+    /// expanded. Deleted nodes drop out; new nodes appear under their parents.</summary>
+    public void Reload()
+    {
+        if (_root is null || !Directory.Exists(_root.FullPath)) return;
+        var expanded = CollectExpandedPaths(_root);
+        SetRoot(_root.FullPath);
+        foreach (var path in expanded)
+            ExpandPath(path);
+    }
+
+    /// <summary>Collect full paths of every expanded directory (root included).</summary>
+    private static List<string> CollectExpandedPaths(FileItem node)
+    {
+        var paths = new List<string>();
+        if (node.IsDirectory && node.IsExpanded && node.FullPath.Length > 0)
+            paths.Add(node.FullPath);
+        foreach (var child in node.Children)
+            if (child.IsDirectory && child.FullPath.Length > 0)
+                paths.AddRange(CollectExpandedPaths(child));
+        return paths;
+    }
+
+    /// <summary>Re-expand a single directory path, loading lazy children on the way down.</summary>
+    private void ExpandPath(string path)
+    {
+        if (_root is null) return;
+        var rel = GetRelativePath(_root.FullPath, path);
+        var parts = rel.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                              StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return;
+
+        var current = _root;
+        foreach (var part in parts)
+        {
+            current.LoadChildren();
+            var next = current.FindChild(part);
+            if (next is null || !next.IsDirectory) return;
+            current.IsExpanded = true; // triggers lazy load of the next level
+            current = next;
+        }
+    }
+
     private static string GetRelativePath(string root, string path)
     {
         try { return Path.GetRelativePath(root, path); }
@@ -153,6 +198,7 @@ public partial class FileBrowser : UserControl
         {
             Add("New File…", () => NewItemRequested?.Invoke(item.FullPath, false));
             Add("New Folder…", () => NewItemRequested?.Invoke(item.FullPath, true));
+            Add("★ Add to Favourites", () => FavouriteRequested?.Invoke(item.FullPath));
             Add("Refresh", () => { item.Reload(); item.IsExpanded = true; }, "F5");
         }
 

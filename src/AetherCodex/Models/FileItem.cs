@@ -1,14 +1,23 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using AetherCodex.Editor;
 
 namespace AetherCodex.Models;
 
-/// <summary>A node in the file browser. Directories are lazy: children load on expand.</summary>
+/// <summary>A node in the file browser. Directories are lazy: children load on expand.
+/// The tree honours `.aether-properties` exclude/include rules (carried on the root and
+/// inherited by every descendant) in addition to the shared default directory ignores.</summary>
 public sealed class FileItem : INotifyPropertyChanged
 {
     public string Name { get; }
     public string FullPath { get; }
     public bool IsDirectory { get; }
+
+    /// <summary>Project exclusion rules inherited from the root (null for detached nodes).</summary>
+    public ProjectIgnore? Ignore { get; }
+
+    /// <summary>True when this node's path is excluded (by itself or an ancestor).</summary>
+    private readonly bool _excluded;
 
     public ObservableCollection<FileItem> Children { get; } = new();
 
@@ -54,10 +63,12 @@ public sealed class FileItem : INotifyPropertyChanged
 
     private bool _loaded;
 
-    public FileItem(string fullPath, bool isDirectory)
+    public FileItem(string fullPath, bool isDirectory, ProjectIgnore? ignore = null, bool excluded = false)
     {
         FullPath = fullPath;
         IsDirectory = isDirectory;
+        Ignore = ignore;
+        _excluded = excluded;
         Name = Path.GetFileName(fullPath);
         if (string.IsNullOrEmpty(Name)) Name = fullPath; // drive root
         if (IsDirectory) Children.Add(Placeholder);
@@ -74,17 +85,31 @@ public sealed class FileItem : INotifyPropertyChanged
         if (_loaded) return;
         _loaded = true;
         Children.Clear();
+        var ignore = Ignore;
         try
         {
             foreach (var dir in Directory.EnumerateDirectories(FullPath).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
             {
-                try { if (!IsHidden(dir)) Children.Add(new FileItem(dir, true)); }
+                try
+                {
+                    if (IsHidden(dir)) continue;
+                    var name = Path.GetFileName(dir);
+                    if (ProjectIgnore.IsDefaultIgnored(name)) continue;
+                    var rel = ignore?.RelativePath(dir) ?? name;
+                    bool excluded = _excluded || (ignore?.MatchesExclude(rel, true) ?? false);
+                    if (excluded && !(ignore?.MatchesInclude(rel, true) ?? false) && !(ignore?.HasIncludeInside(rel) ?? false)) continue;
+                    Children.Add(new FileItem(dir, true, ignore, excluded));
+                }
                 catch { /* skip inaccessible */ }
             }
             foreach (var file in Directory.EnumerateFiles(FullPath).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
             {
                 if (IsHidden(file)) continue;
-                Children.Add(new FileItem(file, false));
+                var name = Path.GetFileName(file);
+                var rel = ignore?.RelativePath(file) ?? name;
+                bool excluded = _excluded || (ignore?.MatchesExclude(rel, false) ?? false);
+                if (excluded && !(ignore?.MatchesInclude(rel, false) ?? false)) continue;
+                Children.Add(new FileItem(file, false, ignore, excluded));
             }
         }
         catch { /* skip inaccessible directory */ }

@@ -23,6 +23,9 @@ public static class DaemonFrames
         public const string Stream = "stream";
         public const string Result = "result";
         public const string RecoverSuggestion = "recover_suggestion";
+        /// <summary>Minimal live-state change ping — subscribers then pull the
+        /// daemon's <c>live_turns</c> table instead of receiving full frames.</summary>
+        public const string Notify = "notify";
     }
 
     /// <summary>A status stream payload's inner kind.</summary>
@@ -35,6 +38,7 @@ public static class DaemonFrames
         public const string CommandExecuting = "command_executing";
         public const string CommandCompleted = "command_completed";
         public const string AskUser = "ask_user";
+        public const string Info = "info";
         public const string Answer = "answer";
         public const string Chunk = "chunk";
         public const string Progress = "progress";
@@ -97,6 +101,21 @@ public sealed class RubyBridgeResponse
         ?? ResultDict?.ToJsonString();
 }
 
+/// <summary>A minimal live-state change notification. The daemon broadcasts this
+/// (session_id + revision + phase) instead of the full status frame; the receiver
+/// pulls the durable <c>live_turns</c> state via <c>GetLiveStateAsync</c>.</summary>
+public sealed record NotifyEvent(string? SessionId, int? Revision, string? Phase)
+{
+    public static NotifyEvent? TryParse(JsonObject frame)
+    {
+        if (frame["type"]?.GetValue<string>() != DaemonFrames.Type.Notify) return null;
+        return new NotifyEvent(
+            frame["session_id"]?.GetValue<string>(),
+            frame["revision"] is JsonValue rv && rv.TryGetValue<int>(out var r) ? r : null,
+            frame["phase"]?.GetValue<string>());
+    }
+}
+
 /// <summary>A parsed stream frame (`method` + `payload`).</summary>
 public sealed class StreamEvent
 {
@@ -105,6 +124,7 @@ public sealed class StreamEvent
     public JsonObject? Data { get; }
     public int? RequestId { get; }
     public string? Uuid { get; }
+    public string? SessionId { get; }
     public JsonObject Raw { get; }
 
     public StreamEvent(JsonObject frame)
@@ -112,6 +132,7 @@ public sealed class StreamEvent
         Raw = frame;
         Method = frame["method"]?.GetValue<string>();
         RequestId = frame["request_id"]?.GetValue<int>();
+        SessionId = frame["session_id"]?.GetValue<string>();
 
         var payload = frame["payload"] as JsonObject;
         StatusType = payload?["type"]?.GetValue<string>();

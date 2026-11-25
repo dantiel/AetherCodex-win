@@ -4,6 +4,8 @@
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:panels="clr-namespace:AetherCodex.Panels"
         xmlns:editor="clr-namespace:AetherCodex.Editor"
+        xmlns:spreadsheet="clr-namespace:AetherCodex.Spreadsheet"
+        xmlns:local="clr-namespace:AetherCodex"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="ÆtherCodex" Height="860" Width="1380"
         WindowStartupLocation="CenterScreen"
@@ -94,16 +96,26 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Explorer / Git view toggle -->
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="10,0" VerticalAlignment="Center">
-                    <ToggleButton x:Name="ExplorerToggle" Content="Files" Style="{StaticResource ToolButton}"
-                                  Checked="OnSidebarModeChanged" Unchecked="OnSidebarModeChanged"/>
-                    <ToggleButton x:Name="GitToggle" Content="Git" Style="{StaticResource ToolButton}"
-                                  Margin="4,0,0,0" Checked="OnSidebarModeChanged" Unchecked="OnSidebarModeChanged"/>
-                </StackPanel>
+                <!-- Explorer / Git / Favourites view toggle + reload -->
+                <DockPanel Grid.Row="1" Margin="10,0" VerticalAlignment="Center">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}"
+                            ToolTip="Reload file tree (F5)" Click="OnBrowserReload">
+                        <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE72C;" FontSize="14"/>
+                    </Button>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ToggleButton x:Name="ExplorerToggle" Content="Files" Style="{StaticResource ToolButton}"
+                                      Checked="OnSidebarModeChanged" Unchecked="OnSidebarModeChanged"/>
+                        <ToggleButton x:Name="GitToggle" Content="Git" Style="{StaticResource ToolButton}"
+                                      Margin="4,0,0,0" Checked="OnSidebarModeChanged" Unchecked="OnSidebarModeChanged"/>
+                        <ToggleButton x:Name="FavouritesToggle" Content="Projects" Style="{StaticResource ToolButton}"
+                                       ToolTip="Favourite projects + ÆtherLink discovery"
+                                       Margin="4,0,0,0" Checked="OnSidebarModeChanged" Unchecked="OnSidebarModeChanged"/>
+                    </StackPanel>
+                </DockPanel>
 
                 <panels:FileBrowser x:Name="Browser" Grid.Row="2"/>
                 <panels:GitPanel x:Name="GitPanel" Grid.Row="2" Visibility="Collapsed"/>
+                <panels:FavouritesPanel x:Name="FavPanel" Grid.Row="2" Visibility="Collapsed"/>
             </Grid>
         </Border>
 
@@ -179,6 +191,9 @@
                                         HorizontalScrollBarVisibility="Auto"
                                         VerticalScrollBarVisibility="Auto"/>
                 <editor:RichTextEditor x:Name="RichEditor" Grid.Column="0" Visibility="Collapsed"/>
+                <spreadsheet:SheetEditor x:Name="SheetEditor" Grid.Column="0" Visibility="Collapsed"/>
+                <panels:BrowserView x:Name="BrowserView" Grid.Column="0" Visibility="Collapsed"/>
+                <local:DiffView x:Name="DiffView" Grid.Column="0" Visibility="Collapsed"/>
                 <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
                               Background="{DynamicResource Border}" Visibility="Collapsed"/>
                 <FlowDocumentScrollViewer x:Name="Preview" Grid.Column="2" Visibility="Collapsed"

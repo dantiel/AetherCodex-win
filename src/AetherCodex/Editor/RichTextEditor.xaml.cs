@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using AetherCodex.Panels;
+using AetherCodex.Util;
 
 namespace AetherCodex.Editor;
 
@@ -27,6 +28,7 @@ public partial class RichTextEditor : UserControl
     private bool _isMarkdown;
     private bool _sourceMode;
     private bool _loadingSource;
+    private RegexHighlighter? _sourceHighlighter;
 
     /// <summary>True when the loaded buffer is markdown (enables the source/rich toggle).</summary>
     public bool IsMarkdown => _isMarkdown;
@@ -87,6 +89,22 @@ public partial class RichTextEditor : UserControl
         SyncToolbarState();
     }
 
+    /// <summary>Text-area width available to the markdown surface, or 0 before layout.</summary>
+    public double MarkdownSurfaceWidth()
+    {
+        double w = RichText.ActualWidth - RichText.Padding.Left - RichText.Padding.Right;
+        return w > 60 ? w : 0;
+    }
+
+    /// <summary>Swap in a freshly rendered markdown document (resize / preference change),
+    /// without leaving the rich view. No-op in source mode or for non-markdown buffers.</summary>
+    public void RefreshRenderedMarkdown(FlowDocument rendered)
+    {
+        if (!_isMarkdown || _sourceMode) return;
+        RichText.Document = rendered;
+        SyncToolbarState();
+    }
+
     /// <summary>The canonical markdown text, synced from the rich surface when needed.</summary>
     public string GetMarkdown()
     {
@@ -118,7 +136,8 @@ public partial class RichTextEditor : UserControl
         {
             // Source → rich: re-render from the raw source.
             var markdown = SourceBox.Text;
-            RichText.Document = MarkdownRenderer.Render(markdown, _theme ?? new SyntaxTheme());
+            RichText.Document = MarkdownRenderer.Render(markdown, _theme ?? new SyntaxTheme(),
+                AppFonts.UiSize > 0 ? AppFonts.UiSize : 14.0, MarkdownSurfaceWidth());
             SourceBox.Visibility = Visibility.Collapsed;
             RichText.Visibility = Visibility.Visible;
             Ruler.Visibility = Visibility.Visible;
@@ -147,6 +166,18 @@ public partial class RichTextEditor : UserControl
             theme.RulerSeparator ?? ui.Border,
             theme.RulerForeground ?? ui.MutedForeground,
             ui.AccentBright);
+
+        AttachSourceHighlighter();
+    }
+
+    /// <summary>Attach the markdown-aware regex colouriser to the raw source pane.</summary>
+    private void AttachSourceHighlighter()
+    {
+        if (_sourceHighlighter is not null)
+            SourceBox.TextArea.TextView.LineTransformers.Remove(_sourceHighlighter);
+        _sourceHighlighter = new RegexHighlighter(_theme ?? new SyntaxTheme(), Languages.FromKey("markdown"));
+        SourceBox.TextArea.TextView.LineTransformers.Add(_sourceHighlighter);
+        SourceBox.TextArea.TextView.Redraw();
     }
 
     // ── Formatting commands ────────────────────────────────────────────────────

@@ -48,6 +48,16 @@ public static class CodeColorizer
         }
     }
 
+    /// <summary>Colourises a single pre-split line, carrying multi-line block-comment
+    /// state across calls via <paramref name="inBlock"/>. Lets a caller inject its own
+    /// line-number gutter between lines while reusing the full tokeniser.</summary>
+    public static void ColorizeLine(
+        InlineCollection inlines, SyntaxTheme theme, LanguageDefinition lang,
+        string line, FontFamily mono, double fontSize, Color fallback, ref bool inBlock)
+    {
+        Colorize(inlines, theme, lang, line, mono, fontSize, fallback, ref inBlock);
+    }
+
     private static void Colorize(
         InlineCollection inlines, SyntaxTheme theme, LanguageDefinition lang,
         string text, FontFamily mono, double size, Color fallback, ref bool inBlock)
@@ -127,9 +137,15 @@ public static class CodeColorizer
                 int s = text.IndexOf(q, i);
                 if (s < 0) break;
                 int e = s + 1;
-                while (e < text.Length && text[e] != q) { if (text[e] == '\\') e++; e++; }
-                if (e < text.Length) e++;
-                tokens.Add((offset + s, e - s, "string"));
+                                while (e < text.Length && text[e] != q)
+                                {
+                                    // Skip an escaped char only when one actually follows; a lone
+                                    // trailing backslash must not push `e` past the end of the line.
+                                    if (text[e] == '\\' && e + 1 < text.Length) e++;
+                                    e++;
+                                }
+                                if (e < text.Length) e++;
+                                tokens.Add((offset + s, e - s, "string"));
                 i = e;
             }
         }
